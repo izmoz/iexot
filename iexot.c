@@ -21,6 +21,9 @@ enum keys {
     ARROW_RIGHT,
     PAGE_UP,
     PAGE_DOWN,
+    HOME_KEY,
+    END_KEY,
+    DEL_KEY,
 };
 struct editor_config {
     int cx, cy;
@@ -174,26 +177,63 @@ int editor_read_key() {
                 if (read(STDIN_FILENO, &seq[2], 1) == -1)
                     return '\x1b';
                 if (seq[2] == '~') {
+                    /* 
+                     Switch statement for sequences ends with '~', e.g
+                     PAGE UP KEY - <Esc>[5~
+                     HOME    KEY - <Esc>[7~
+                    */
                     switch (seq[1]) {
+                    case '1':
+                        return HOME_KEY;
+                    case '3':
+                        return DEL_KEY;
+                    case '4':
+                        return END_KEY;
                     case '5':
                         return PAGE_UP;
                     case '6':
                         return PAGE_DOWN;
+                    case '7':
+                        return HOME_KEY;
+                    case '8':
+                        return END_KEY;
                     }
                 }
             } else {
+                /* 
+                 Switch statement for sequences starts with '[', e.g
+                 UP KEY   - <Esc>[A
+                 HOME KEY - <Esc>[F
+                */
                 switch (seq[1]) {
                 case 'A':
                     return ARROW_UP;
                 case 'B':
                     return ARROW_DOWN;
-                case 'D':
-                    return ARROW_LEFT;
                 case 'C':
                     return ARROW_RIGHT;
+                case 'D':
+                    return ARROW_LEFT;
+                case 'F':
+                    return END_KEY;
+                case 'H':
+                    return HOME_KEY;
                 default:
                     return '\x1b';
                 }
+            }
+        }
+        else if (seq[0]=='O') {
+            /* 
+             Switch statement for sequences starts with 'O', e.g
+             END  KEY - <Esc>OF
+             HOME KEY - <Esc>OH
+            */
+            switch(seq[1]) {
+                case 'H':
+                    return HOME_KEY;
+                case 'F':
+                    return END_KEY;
             }
         }
     }
@@ -241,6 +281,12 @@ void editor_process_keypress() {
         }
         break;
     }
+    case HOME_KEY:
+        config.cx = 0;
+        break;
+    case END_KEY:
+        config.cx = config.scrncols - 1;
+        break;
     }
 }
 int main(int argc, char **argv) {
