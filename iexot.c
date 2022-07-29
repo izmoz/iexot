@@ -21,7 +21,16 @@
           " | || |___ /  \\ |_| || |   | |___| |_| | |  | || |_| |  _ <\x1b[E\x1b[H10"\
           "|___|_____/_/\\_\\___/ |_|   |_____|____/___| |_| \\___/|_| \\_\\\x1b[E\x1b[H11"\
 ; */
+enum keys {
+    ARROW_UP = 1000,
+    ARROW_DOWN,
+    ARROW_LEFT,
+    ARROW_RIGHT,
+    PAGE_UP,
+    PAGE_DOWN,
+};
 struct editor_config {
+    int cx,cy;
     unsigned scrnrows; 
     unsigned scrncols; 
     struct termios orig_termios;
@@ -69,6 +78,7 @@ int get_win_size(unsigned *rows, unsigned *cols) {
     }
 }
 void init() {
+    config.cx=config.cy=0;
     if(get_win_size(&config.scrnrows, &config.scrncols) == -1) die("get_win_size");
 }
 void die(const char *s) {
@@ -132,7 +142,10 @@ void clear_scrn() {
 
 	draw_rows(&ab);
 
-    ab_append(&ab, "\x1b[H", 3);
+    char buf[32];
+    snprintf(buf, sizeof(buf),"\x1b[%d;%dH",config.cy+1,config.cx+1);
+
+    ab_append(&ab,buf,strlen(buf));
     ab_append(&ab, "\x1b[?25h", 6);
 
     write(STDOUT_FILENO,ab.b,ab.len);
@@ -140,23 +153,82 @@ void clear_scrn() {
 }
 
 /*** input ***/
-char editor_read_key() {
+int editor_read_key() {
 	int nread;
 	char c;
 	while((nread=read(STDIN_FILENO,&c,1)) != 1) {
 		// if(nread != -1 && errno != EAGAIN)
 		// 	exit(0);
 	}
+    if(c=='\x1b') {
+        char seq[3];
+        if(read(STDIN_FILENO,&seq[0],1) != 1 || read(STDIN_FILENO,&seq[1],1) != 1) return '\x1b';
+        if(seq[0] == '[') {
+            if(seq[1] > '0' &&  seq[1] <= '9') {
+                if(read(STDIN_FILENO, &seq[2],1) == -1) return '\x1b';
+                if(seq[2] == '~') {
+                    switch(seq[1]) {
+                        case '5' : return PAGE_UP;
+                        case '6' : return PAGE_DOWN;
+                    }
+                }
+            } else {
+                switch(seq[1]) {
+                    case 'A' : return ARROW_UP;
+                    case 'B' : return ARROW_DOWN;
+                    case 'D' : return ARROW_LEFT;
+                    case 'C' : return ARROW_RIGHT;
+                    default  : return '\x1b';
+                }
+            }
+        }
+    }
 	return c;
 }
+void editor_move_cursor(int k) {
+    switch(k) {
+        case ARROW_LEFT:
+            if(config.cx!=0)
+                config.cx--;
+            break;
+        case ARROW_RIGHT:
+            if(config.cx!=config.scrncols-1)
+                config.cx++;
+            break;
+        case ARROW_UP:
+            if(config.cy!=0)
+                config.cy--;
+            break;
+        case ARROW_DOWN:
+            if(config.cy!=config.scrnrows-1)
+                config.cy++;
+            break;
+    }
+}
 void editor_process_keypress() {
-	char c = editor_read_key();
+	int c = editor_read_key();
 	switch (c) {
         case CTRL_KEY('q'):
 			write(STDIN_FILENO,"\x1b[2J",4);
 			write(STDIN_FILENO,"\x1b[H",3);
 			exit(0);
 			break;
+        case ARROW_LEFT:
+        case ARROW_RIGHT:
+        case ARROW_UP:
+        case ARROW_DOWN:
+            editor_move_cursor(c);
+            break;
+        case PAGE_UP:
+        case PAGE_DOWN:
+            {
+                int times=config.scrnrows;
+                while(times--) {
+                    editor_move_cursor(c==PAGE_UP ? ARROW_UP : ARROW_DOWN);
+                }
+                break;
+            }
+
 	}
 }
 int main(int argc, char **argv) {
