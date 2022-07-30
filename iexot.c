@@ -25,12 +25,40 @@ enum keys {
     END_KEY,
     DEL_KEY,
 };
+typedef struct erow {
+    size_t size;
+    char *chars;
+} erow;
 struct editor_config {
     int cx, cy;
     unsigned scrnrows;
     unsigned scrncols;
+    unsigned nrows;
+    erow erow;
     struct termios orig_termios;
 } config;
+
+/*** file i/o ***/
+void editor_open(const char *filename) {
+    FILE *fp = fopen(filename, "r");
+    char *line = NULL;
+    if (!fp)
+        die("fopen");
+    size_t linecap = 0;
+    ssize_t linelen = getline(&line, &linecap, fp);
+    if (linelen != -1) {
+        while (linelen > 0 &&
+               (line[linelen - 1] == '\r' || line[linelen - 1] == '\n'))
+            linelen--;
+        config.erow.size = linelen;
+        config.erow.chars = malloc(linelen + 1);
+        memcpy(config.erow.chars, line, linelen);
+        config.erow.chars[linelen] = '\0';
+        config.nrows = 1;
+    }
+    free(line);
+    fclose(fp);
+}
 
 /*** append-buffer ***/
 struct abuf {
@@ -81,7 +109,8 @@ int get_win_size(unsigned *rows, unsigned *cols) {
         return 0;
     }
 }
-void init() {
+void editor_init() {
+    config.nrows = 0;
     config.cx = config.cy = 0;
     if (get_win_size(&config.scrnrows, &config.scrncols) == -1)
         die("get_win_size");
@@ -116,30 +145,37 @@ void enable_raw_mode() {
 /*** output ***/
 void draw_rows(struct abuf *ab) {
     size_t y;
-    for (y = 1; y < config.scrnrows; ++y) {
-        if (y == IEXOT_TITLE_TOP_PADDING) {
-            char welcome[80];
-            size_t welcomelen =
-                sprintf(welcome, "IEXOT EDITOR VERSION %s", IEXOT_VERSION);
-            if (welcomelen > config.scrncols)
-                welcomelen = config.scrncols;
-            int padding =
-                (config.scrncols - welcomelen) / 2 - 1; // -1 because of tilda
-            if (padding) {
+    for (y = 0; y < config.scrnrows; ++y) {
+        if (y >= config.nrows) {
+            if (y == IEXOT_TITLE_TOP_PADDING) {
+                char welcome[80];
+                size_t welcomelen =
+                    sprintf(welcome, "IEXOT EDITOR VERSION %s", IEXOT_VERSION);
+                if (welcomelen > config.scrncols)
+                    welcomelen = config.scrncols;
+                int padding = (config.scrncols - welcomelen) / 2 -
+                              1; // -1 because of tilda
+                if (padding) {
+                    ab_append(ab, "~", 1);
+                    padding--;
+                }
+                while (padding--) {
+                    ab_append(ab, " ", 1);
+                }
+                ab_append(ab, welcome, welcomelen);
+            } else {
                 ab_append(ab, "~", 1);
-                padding--;
             }
-            while (padding--) {
-                ab_append(ab, " ", 1);
-            }
-            ab_append(ab, welcome, welcomelen);
-        } else {
-            ab_append(ab, "~", 1);
-        }
-        ab_append(ab, "\x1b[K", 3); // escape sequence to clear the screen
+            ab_append(ab, "\x1b[K", 3); // escape sequence to clear the screen
 
-        if (y < config.scrnrows - 1)
-            ab_append(ab, "\r\n", 2);
+            if (y < config.scrnrows - 1)
+                ab_append(ab, "\r\n", 2);
+        } else {
+            size_t len = (config.erow.size > config.scrncols)
+                             ? config.scrncols
+                             : config.erow.size;
+            ab_append(ab, config.erow.chars, len);
+        }
     }
 }
 void clear_scrn() {
@@ -177,7 +213,7 @@ int editor_read_key() {
                 if (read(STDIN_FILENO, &seq[2], 1) == -1)
                     return '\x1b';
                 if (seq[2] == '~') {
-                    /* 
+                    /*
                      Switch statement for sequences ends with '~', e.g
                      PAGE UP KEY - <Esc>[5~
                      HOME    KEY - <Esc>[7~
@@ -200,7 +236,7 @@ int editor_read_key() {
                     }
                 }
             } else {
-                /* 
+                /*
                  Switch statement for sequences starts with '[', e.g
                  UP KEY   - <Esc>[A
                  HOME KEY - <Esc>[F
@@ -222,18 +258,17 @@ int editor_read_key() {
                     return '\x1b';
                 }
             }
-        }
-        else if (seq[0]=='O') {
-            /* 
+        } else if (seq[0] == 'O') {
+            /*
              Switch statement for sequences starts with 'O', e.g
              END  KEY - <Esc>OF
              HOME KEY - <Esc>OH
             */
-            switch(seq[1]) {
-                case 'H':
-                    return HOME_KEY;
-                case 'F':
-                    return END_KEY;
+            switch (seq[1]) {
+            case 'H':
+                return HOME_KEY;
+            case 'F':
+                return END_KEY;
             }
         }
     }
@@ -291,7 +326,9 @@ void editor_process_keypress() {
 }
 int main(int argc, char **argv) {
     enable_raw_mode();
-    init();
+    editor_init();
+    if (argc >= 2)
+        editor_open(argv[1]);
     while (1) {
         clear_scrn();
         editor_process_keypress();
