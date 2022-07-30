@@ -29,15 +29,30 @@ typedef struct erow {
     size_t size;
     char *chars;
 } erow;
+void erow_free(erow *row) {
+    if(!row)
+        return;
+    free(row->chars);
+    free(row);
+}
 struct editor_config {
     int cx, cy;
     unsigned scrnrows;
     unsigned scrncols;
     unsigned nrows;
-    erow erow;
+    erow *row;
     struct termios orig_termios;
 } config;
 
+void editor_append_line(const char *s, size_t len) {
+    config.row = realloc(config.row,sizeof(erow)*(config.nrows + 1));
+    size_t at=config.nrows;
+    config.row[at].size=len;
+    config.row[at].chars=malloc(len+1);
+    memcpy(config.row[at].chars,s,len);
+    config.row[at].chars[len]='\0';
+    config.nrows++;
+}
 /*** file i/o ***/
 void editor_open(const char *filename) {
     FILE *fp = fopen(filename, "r");
@@ -45,19 +60,13 @@ void editor_open(const char *filename) {
     if (!fp)
         die("fopen");
     size_t linecap = 0;
-    ssize_t linelen = getline(&line, &linecap, fp);
-    if (linelen != -1) {
+    ssize_t linelen;
+    while((linelen=getline(&line,&linecap,fp)) != -1) {
         while (linelen > 0 &&
                (line[linelen - 1] == '\r' || line[linelen - 1] == '\n'))
             linelen--;
-        config.erow.size = linelen;
-        config.erow.chars = malloc(linelen + 1);
-        memcpy(config.erow.chars, line, linelen);
-        config.erow.chars[linelen] = '\0';
-        config.nrows = 1;
+        editor_append_line(line, linelen);
     }
-    free(line);
-    fclose(fp);
 }
 
 /*** append-buffer ***/
@@ -111,9 +120,16 @@ int get_win_size(unsigned *rows, unsigned *cols) {
 }
 void editor_init() {
     config.nrows = 0;
+    config.row=NULL;
     config.cx = config.cy = 0;
     if (get_win_size(&config.scrnrows, &config.scrncols) == -1)
         die("get_win_size");
+}
+void editor_destroy() {
+    write(STDIN_FILENO, "\x1b[2J", 4);
+    write(STDIN_FILENO, "\x1b[H", 3);
+    erow_free(config.row);
+    exit(0);
 }
 void die(const char *s) {
     write(STDIN_FILENO, "\x1b[2J", 4);
@@ -147,7 +163,7 @@ void draw_rows(struct abuf *ab) {
     size_t y;
     for (y = 0; y < config.scrnrows; ++y) {
         if (y >= config.nrows) {
-            if (y == IEXOT_TITLE_TOP_PADDING) {
+            if (config.nrows == 0 && y == IEXOT_TITLE_TOP_PADDING) {
                 char welcome[80];
                 size_t welcomelen =
                     sprintf(welcome, "IEXOT EDITOR VERSION %s", IEXOT_VERSION);
@@ -166,16 +182,16 @@ void draw_rows(struct abuf *ab) {
             } else {
                 ab_append(ab, "~", 1);
             }
+        } else {
+            size_t len = (config.row[y].size > config.scrncols)
+                             ? config.scrncols
+                             : config.row[y].size;
+            ab_append(ab, config.row[y].chars, len);
+        }
             ab_append(ab, "\x1b[K", 3); // escape sequence to clear the screen
 
             if (y < config.scrnrows - 1)
                 ab_append(ab, "\r\n", 2);
-        } else {
-            size_t len = (config.erow.size > config.scrncols)
-                             ? config.scrncols
-                             : config.erow.size;
-            ab_append(ab, config.erow.chars, len);
-        }
     }
 }
 void clear_scrn() {
@@ -298,9 +314,7 @@ void editor_process_keypress() {
     int c = editor_read_key();
     switch (c) {
     case CTRL_KEY('q'):
-        write(STDIN_FILENO, "\x1b[2J", 4);
-        write(STDIN_FILENO, "\x1b[H", 3);
-        exit(0);
+        editor_destroy();
         break;
     case ARROW_LEFT:
     case ARROW_RIGHT:
