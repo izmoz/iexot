@@ -30,7 +30,7 @@ typedef struct erow {
     char *chars;
 } erow;
 void erow_free(erow *row) {
-    if(!row)
+    if (!row)
         return;
     free(row->chars);
     free(row);
@@ -40,17 +40,19 @@ struct editor_config {
     unsigned scrnrows;
     unsigned scrncols;
     unsigned nrows;
+    unsigned rowoff;
+    unsigned coloff;
     erow *row;
     struct termios orig_termios;
 } config;
 
 void editor_append_line(const char *s, size_t len) {
-    config.row = realloc(config.row,sizeof(erow)*(config.nrows + 1));
-    size_t at=config.nrows;
-    config.row[at].size=len;
-    config.row[at].chars=malloc(len+1);
-    memcpy(config.row[at].chars,s,len);
-    config.row[at].chars[len]='\0';
+    config.row = realloc(config.row, sizeof(erow) * (config.nrows + 1));
+    size_t at = config.nrows;
+    config.row[at].size = len;
+    config.row[at].chars = malloc(len + 1);
+    memcpy(config.row[at].chars, s, len);
+    config.row[at].chars[len] = '\0';
     config.nrows++;
 }
 /*** file i/o ***/
@@ -61,7 +63,7 @@ void editor_open(const char *filename) {
         die("fopen");
     size_t linecap = 0;
     ssize_t linelen;
-    while((linelen=getline(&line,&linecap,fp)) != -1) {
+    while ((linelen = getline(&line, &linecap, fp)) != -1) {
         while (linelen > 0 &&
                (line[linelen - 1] == '\r' || line[linelen - 1] == '\n'))
             linelen--;
@@ -120,7 +122,9 @@ int get_win_size(unsigned *rows, unsigned *cols) {
 }
 void editor_init() {
     config.nrows = 0;
-    config.row=NULL;
+    config.rowoff = 0;
+    config.coloff = 0;
+    config.row = NULL;
     config.cx = config.cy = 0;
     if (get_win_size(&config.scrnrows, &config.scrncols) == -1)
         die("get_win_size");
@@ -159,10 +163,11 @@ void enable_raw_mode() {
 }
 
 /*** output ***/
-void draw_rows(struct abuf *ab) {
+void editor_draw_rows(struct abuf *ab) {
     size_t y;
     for (y = 0; y < config.scrnrows; ++y) {
-        if (y >= config.nrows) {
+        size_t filerow = y + config.rowoff;
+        if (filerow >= config.nrows) {
             if (config.nrows == 0 && y == IEXOT_TITLE_TOP_PADDING) {
                 char welcome[80];
                 size_t welcomelen =
@@ -183,26 +188,40 @@ void draw_rows(struct abuf *ab) {
                 ab_append(ab, "~", 1);
             }
         } else {
-            size_t len = (config.row[y].size > config.scrncols)
-                             ? config.scrncols
-                             : config.row[y].size;
-            ab_append(ab, config.row[y].chars, len);
+            size_t len = config.row[filerow].size - config.coloff;
+            if (len < 0)
+                len = 0;
+            if (len > config.scrncols)
+                len = config.scrncols;
+            ab_append(ab, &config.row[filerow].chars[config.coloff], len);
         }
-            ab_append(ab, "\x1b[K", 3); // escape sequence to clear the screen
+        ab_append(ab, "\x1b[K", 3); // escape sequence to clear the screen
 
-            if (y < config.scrnrows - 1)
-                ab_append(ab, "\r\n", 2);
+        if (y < config.scrnrows - 1)
+            ab_append(ab, "\r\n", 2);
     }
 }
-void clear_scrn() {
+void editor_scroll() {
+    if (config.cy < config.rowoff)
+        config.rowoff = config.cy;
+    if (config.cy >= config.rowoff + config.scrnrows)
+        config.rowoff = config.cy - config.scrnrows + 1;
+    if (config.cx < config.coloff)
+        config.coloff = config.cx;
+    if (config.cx >= config.coloff + config.scrncols)
+        config.coloff = config.cx - config.scrncols + 1;
+}
+void editor_clear_scrn() {
+    editor_scroll();
     struct abuf ab = ABUF_INIT;
     ab_append(&ab, "\x1b[?25l", 6); // hide the cursor when repainting
     ab_append(&ab, "\x1b[H", 3);    // escape sequence to move the cursor
 
-    draw_rows(&ab);
+    editor_draw_rows(&ab);
 
-    char buf[32];
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", config.cy + 1, config.cx + 1);
+    char buf[100];
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", config.cy - config.rowoff + 1,
+             config.cx - config.coloff + 1); // updating cursor position
 
     ab_append(&ab, buf, strlen(buf));
     ab_append(&ab, "\x1b[?25h", 6);
@@ -291,13 +310,15 @@ int editor_read_key() {
     return c;
 }
 void editor_move_cursor(int k) {
+    struct erow *current_row =
+        (config.cy >= config.nrows) ? NULL : &config.row[config.cy];
     switch (k) {
     case ARROW_LEFT:
         if (config.cx != 0)
             config.cx--;
         break;
     case ARROW_RIGHT:
-        if (config.cx != config.scrncols - 1)
+        if (current_row && config.cx < current_row->size - 1)
             config.cx++;
         break;
     case ARROW_UP:
@@ -305,13 +326,19 @@ void editor_move_cursor(int k) {
             config.cy--;
         break;
     case ARROW_DOWN:
-        if (config.cy != config.scrnrows - 1)
+        if (config.cy < config.nrows)
             config.cy++;
         break;
     }
+    // current_row = (config.cy >= config.nrows) ? NULL : &config.row[config.cy];
+    // size_t rowlen = current_row ? current_row->size - 1 : 0;
+    // if (config.cx > rowlen)
+    //     config.cx = rowlen;
 }
 void editor_process_keypress() {
     int c = editor_read_key();
+    struct erow *current_row =
+        (config.cy >= config.nrows) ? NULL : &config.row[config.cy];
     switch (c) {
     case CTRL_KEY('q'):
         editor_destroy();
@@ -334,7 +361,8 @@ void editor_process_keypress() {
         config.cx = 0;
         break;
     case END_KEY:
-        config.cx = config.scrncols - 1;
+        if (current_row)
+            config.cx = current_row->size - 1;
         break;
     }
 }
@@ -344,7 +372,15 @@ int main(int argc, char **argv) {
     if (argc >= 2)
         editor_open(argv[1]);
     while (1) {
-        clear_scrn();
+        editor_clear_scrn();
+        editor_process_keypress();
+    }
+    enable_raw_mode();
+    editor_init();
+    if (argc >= 2)
+        editor_open(argv[1]);
+    while (1) {
+        editor_clear_scrn();
         editor_process_keypress();
     }
 }
