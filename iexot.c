@@ -188,7 +188,7 @@ void editor_draw_rows(struct abuf *ab) {
                 ab_append(ab, "~", 1);
             }
         } else {
-            size_t len = config.row[filerow].size - config.coloff;
+            ssize_t len = config.row[filerow].size - config.coloff;
             if (len < 0)
                 len = 0;
             if (len > config.scrncols)
