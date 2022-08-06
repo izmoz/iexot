@@ -63,6 +63,7 @@ void editor_open(const char *filename) {
         die("fopen");
     size_t linecap = 0;
     ssize_t linelen;
+
     while ((linelen = getline(&line, &linecap, fp)) != -1) {
         while (linelen > 0 &&
                (line[linelen - 1] == '\r' || line[linelen - 1] == '\n'))
@@ -316,10 +317,19 @@ void editor_move_cursor(int k) {
     case ARROW_LEFT:
         if (config.cx != 0)
             config.cx--;
+        else if (config.cx == 0 && config.cy > 0) {
+            config.cy--;
+            config.cx = config.row[config.cy].size - 1;
+        }
         break;
     case ARROW_RIGHT:
         if (current_row && config.cx < current_row->size - 1)
             config.cx++;
+        else if (config.cx == config.row[config.cy].size - 1 &&
+                 config.cy < config.nrows) {
+            config.cy++;
+            config.cx = 0;
+        }
         break;
     case ARROW_UP:
         if (config.cy != 0)
@@ -330,10 +340,10 @@ void editor_move_cursor(int k) {
             config.cy++;
         break;
     }
-    // current_row = (config.cy >= config.nrows) ? NULL : &config.row[config.cy];
-    // size_t rowlen = current_row ? current_row->size - 1 : 0;
-    // if (config.cx > rowlen)
-    //     config.cx = rowlen;
+    current_row = (config.cy >= config.nrows) ? NULL : &config.row[config.cy];
+    int rowlen = (current_row) ? current_row->size - 1 : 0;
+    if (config.cx > rowlen)
+        config.cx = rowlen;
 }
 void editor_process_keypress() {
     int c = editor_read_key();
@@ -367,14 +377,6 @@ void editor_process_keypress() {
     }
 }
 int main(int argc, char **argv) {
-    enable_raw_mode();
-    editor_init();
-    if (argc >= 2)
-        editor_open(argv[1]);
-    while (1) {
-        editor_clear_scrn();
-        editor_process_keypress();
-    }
     enable_raw_mode();
     editor_init();
     if (argc >= 2)
