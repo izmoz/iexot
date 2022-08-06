@@ -26,8 +26,10 @@ enum keys {
     DEL_KEY,
 };
 typedef struct erow {
-    size_t size;
+    int size;
+    int rsize;
     char *chars;
+    char *render;
 } erow;
 void erow_free(erow *row) {
     if (!row)
@@ -46,13 +48,37 @@ struct editor_config {
     struct termios orig_termios;
 } config;
 
+void editor_update_row(erow *row) {
+    size_t tabs=0;
+    size_t tabs_width=4;
+    for(size_t i=0;i<row->size;i++)
+        if(row->chars[i]=='\t')tabs++;
+    free(row->render);
+    row->render = malloc(row->size+1-tabs + (tabs_width * tabs));
+    if(!row->render)
+        editor_destroy();
+    size_t idx=0;
+    for (size_t j=0;j<row->size;j++) {
+        if(row->chars[j] == '\t') {
+            row->render[idx++] = ' ';
+            while(idx%4!=0) row->render[idx++] = ' ';
+        } else
+            row->render[idx++]=row->chars[j];
+    }
+    row->render[idx] = '\0';
+    row->rsize=idx;
+}
 void editor_append_line(const char *s, size_t len) {
     config.row = realloc(config.row, sizeof(erow) * (config.nrows + 1));
     size_t at = config.nrows;
     config.row[at].size = len;
     config.row[at].chars = malloc(len + 1);
+    config.row[at].rsize = 0;
+    config.row[at].render = NULL;
     memcpy(config.row[at].chars, s, len);
     config.row[at].chars[len] = '\0';
+    editor_update_row(&config.row[at]);
+
     config.nrows++;
 }
 /*** file i/o ***/
@@ -189,12 +215,12 @@ void editor_draw_rows(struct abuf *ab) {
                 ab_append(ab, "~", 1);
             }
         } else {
-            ssize_t len = config.row[filerow].size - config.coloff;
+            ssize_t len = config.row[filerow].rsize - config.coloff;
             if (len < 0)
                 len = 0;
             if (len > config.scrncols)
                 len = config.scrncols;
-            ab_append(ab, &config.row[filerow].chars[config.coloff], len);
+            ab_append(ab, &config.row[filerow].render[config.coloff], len);
         }
         ab_append(ab, "\x1b[K", 3); // escape sequence to clear the screen
 
