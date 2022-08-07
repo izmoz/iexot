@@ -5,6 +5,7 @@ void enable_raw_mode();
 
 int editor_read_key();
 void editor_process_keypress();
+void editor_destroy();
 
 void draw_rows();
 void clear_scrn();
