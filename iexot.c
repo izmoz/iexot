@@ -14,6 +14,8 @@
 #define CTRL_KEY(k) ((k)&0x1f)
 #define IEXOT_VERSION "0.0.1"
 #define IEXOT_TITLE_TOP_PADDING 3
+
+#define IEXOT_TAB_WIDTH 4
 enum keys {
     ARROW_UP = 1000,
     ARROW_DOWN,
@@ -50,18 +52,18 @@ struct editor_config {
 
 void editor_update_row(erow *row) {
     size_t tabs=0;
-    size_t tabs_width=4;
     for(size_t i=0;i<row->size;i++)
         if(row->chars[i]=='\t')tabs++;
     free(row->render);
-    row->render = malloc(row->size-tabs +1+ (tabs_width * tabs));
+    size_t space_to_allocate = row->size-tabs + 1 + (IEXOT_TAB_WIDTH * tabs); // extra 1 byte for null-terminator
+    row->render = malloc(space_to_allocate);
     if(!row->render)
         editor_destroy();
     size_t idx=0;
     for (size_t j=0;j<row->size;j++) {
         if(row->chars[j] == '\t') {
             size_t t=0;
-            while(t<tabs_width) {
+            while(t<IEXOT_TAB_WIDTH) {
                 row->render[idx+t] = ' ';
                 t++;
             }
