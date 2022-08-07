@@ -54,14 +54,18 @@ void editor_update_row(erow *row) {
     for(size_t i=0;i<row->size;i++)
         if(row->chars[i]=='\t')tabs++;
     free(row->render);
-    row->render = malloc(row->size+1-tabs + (tabs_width * tabs));
+    row->render = malloc(row->size-tabs +1+ (tabs_width * tabs));
     if(!row->render)
         editor_destroy();
     size_t idx=0;
     for (size_t j=0;j<row->size;j++) {
         if(row->chars[j] == '\t') {
-            row->render[idx++] = ' ';
-            while(idx%4!=0) row->render[idx++] = ' ';
+            size_t t=0;
+            while(t<tabs_width) {
+                row->render[idx+t] = ' ';
+                t++;
+            }
+            idx+=t;
         } else
             row->render[idx++]=row->chars[j];
     }
@@ -345,13 +349,13 @@ void editor_move_cursor(int k) {
             config.cx--;
         else if (config.cx == 0 && config.cy > 0) {
             config.cy--;
-            config.cx = config.row[config.cy].size - 1;
+            config.cx = config.row[config.cy].rsize - 1;
         }
         break;
     case ARROW_RIGHT:
-        if (current_row && config.cx < current_row->size - 1)
+        if (current_row && config.cx < current_row->rsize - 1)
             config.cx++;
-        else if (config.cx == config.row[config.cy].size - 1 &&
+        else if (config.cx == config.row[config.cy].rsize - 1 &&
                  config.cy < config.nrows) {
             config.cy++;
             config.cx = 0;
@@ -367,7 +371,7 @@ void editor_move_cursor(int k) {
         break;
     }
     current_row = (config.cy >= config.nrows) ? NULL : &config.row[config.cy];
-    int rowlen = (current_row) ? current_row->size - 1 : 0;
+    int rowlen = (current_row) ? current_row->rsize - 1 : 0;
     if (config.cx > rowlen)
         config.cx = rowlen;
 }
