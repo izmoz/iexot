@@ -1,3 +1,8 @@
+/*current bugs:
+ *  - blank lines throw seg fault
+ */
+
+
 /** includes ***/
 #include "iexot.h"
 #include <ctype.h>
@@ -40,7 +45,7 @@ void erow_free(erow *row) {
     free(row);
 }
 struct editor_config {
-    int cx, cy;
+    int cx, cy, rx;
     unsigned scrnrows;
     unsigned scrncols;
     unsigned nrows;
@@ -50,6 +55,16 @@ struct editor_config {
     struct termios orig_termios;
 } config;
 
+int editor_cx_to_rx(erow *row, int cx) {
+    size_t i;
+    int rx=0;
+    for(i=0;i<cx;i++) {
+        if(row->chars[i] == '\t')
+            rx+=(IEXOT_TAB_WIDTH-1) - (rx%IEXOT_TAB_WIDTH);
+        rx++;
+    }
+    return rx;
+}
 void editor_update_row(erow *row) {
     size_t tabs=0;
     for(size_t i=0;i<row->size;i++)
@@ -158,7 +173,7 @@ void editor_init() {
     config.rowoff = 0;
     config.coloff = 0;
     config.row = NULL;
-    config.cx = config.cy = 0;
+    config.cx = config.cy = config.rx = 0;
     if (get_win_size(&config.scrnrows, &config.scrncols) == -1)
         die("get_win_size");
 }
@@ -235,14 +250,19 @@ void editor_draw_rows(struct abuf *ab) {
     }
 }
 void editor_scroll() {
+    config.rx=0;
+    if(config.cy < config.nrows)
+        config.rx=editor_cx_to_rx(&config.row[config.cy], config.cx);
+
     if (config.cy < config.rowoff)
         config.rowoff = config.cy;
     if (config.cy >= config.rowoff + config.scrnrows)
         config.rowoff = config.cy - config.scrnrows + 1;
-    if (config.cx < config.coloff)
-        config.coloff = config.cx;
-    if (config.cx >= config.coloff + config.scrncols)
-        config.coloff = config.cx - config.scrncols + 1;
+
+    if (config.rx < config.coloff)
+        config.coloff = config.rx;
+    if (config.rx >= config.coloff + config.scrncols)
+        config.coloff = config.rx - config.scrncols + 1;
 }
 void editor_clear_scrn() {
     editor_scroll();
@@ -254,7 +274,7 @@ void editor_clear_scrn() {
 
     char buf[100];
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH", config.cy - config.rowoff + 1,
-             config.cx - config.coloff + 1); // updating cursor position
+             config.rx - config.coloff + 1); // updating cursor position
 
     ab_append(&ab, buf, strlen(buf));
     ab_append(&ab, "\x1b[?25h", 6);
@@ -351,13 +371,13 @@ void editor_move_cursor(int k) {
             config.cx--;
         else if (config.cx == 0 && config.cy > 0) {
             config.cy--;
-            config.cx = config.row[config.cy].rsize - 1;
+            config.cx = config.row[config.cy].size - 1;
         }
         break;
     case ARROW_RIGHT:
-        if (current_row && config.cx < current_row->rsize - 1)
+        if (current_row && config.cx < current_row->size - 1)
             config.cx++;
-        else if (config.cx == config.row[config.cy].rsize - 1 &&
+        else if (config.cx == config.row[config.cy].size - 1 &&
                  config.cy < config.nrows) {
             config.cy++;
             config.cx = 0;
