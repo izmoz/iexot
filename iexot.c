@@ -2,7 +2,6 @@
  *  - blank lines throw seg fault
  */
 
-
 /** includes ***/
 #include "iexot.h"
 #include <ctype.h>
@@ -57,37 +56,40 @@ struct editor_config {
 
 int editor_cx_to_rx(erow *row, int cx) {
     size_t i;
-    int rx=0;
-    for(i=0;i<cx;i++) {
-        if(row->chars[i] == '\t')
-            rx+=(IEXOT_TAB_WIDTH-1) - (rx%IEXOT_TAB_WIDTH);
+    int rx = 0;
+    for (i = 0; i < cx; i++) {
+        if (row->chars[i] == '\t')
+            rx += (IEXOT_TAB_WIDTH - 1) - (rx % IEXOT_TAB_WIDTH);
         rx++;
     }
     return rx;
 }
 void editor_update_row(erow *row) {
-    size_t tabs=0;
-    for(size_t i=0;i<row->size;i++)
-        if(row->chars[i]=='\t')tabs++;
+    size_t tabs = 0;
+    for (size_t i = 0; i < row->size; i++)
+        if (row->chars[i] == '\t')
+            tabs++;
     free(row->render);
-    size_t space_to_allocate = row->size-tabs + 1 + (IEXOT_TAB_WIDTH * tabs); // extra 1 byte for null-terminator
+    size_t space_to_allocate =
+        row->size - tabs + 1 +
+        (IEXOT_TAB_WIDTH * tabs); // extra 1 byte for null-terminator
     row->render = malloc(space_to_allocate);
-    if(!row->render)
+    if (!row->render)
         editor_destroy();
-    size_t idx=0;
-    for (size_t j=0;j<row->size;j++) {
-        if(row->chars[j] == '\t') {
-            size_t t=0;
-            while(t<IEXOT_TAB_WIDTH) {
-                row->render[idx+t] = ' ';
+    size_t idx = 0;
+    for (size_t j = 0; j < row->size; j++) {
+        if (row->chars[j] == '\t') {
+            size_t t = 0;
+            while (t < IEXOT_TAB_WIDTH) {
+                row->render[idx + t] = ' ';
                 t++;
             }
-            idx+=t;
+            idx += t;
         } else
-            row->render[idx++]=row->chars[j];
+            row->render[idx++] = row->chars[j];
     }
     row->render[idx] = '\0';
-    row->rsize=idx;
+    row->rsize = idx;
 }
 void editor_append_line(const char *s, size_t len) {
     config.row = realloc(config.row, sizeof(erow) * (config.nrows + 1));
@@ -250,9 +252,9 @@ void editor_draw_rows(struct abuf *ab) {
     }
 }
 void editor_scroll() {
-    config.rx=0;
-    if(config.cy < config.nrows)
-        config.rx=editor_cx_to_rx(&config.row[config.cy], config.cx);
+    config.rx = 0;
+    if (config.cy < config.nrows)
+        config.rx = editor_cx_to_rx(&config.row[config.cy], config.cx);
 
     if (config.cy < config.rowoff)
         config.rowoff = config.cy;
@@ -413,6 +415,13 @@ void editor_process_keypress() {
         break;
     case PAGE_UP:
     case PAGE_DOWN: {
+        if (c == PAGE_UP) {
+            config.cy = config.rowoff;
+        } else if (c == PAGE_DOWN) {
+            config.cy = config.scrnrows - 1 + config.rowoff;
+            if (config.cy > config.nrows)
+                config.cy = config.scrnrows;
+        }
         int times = config.scrnrows;
         while (times--) {
             editor_move_cursor(c == PAGE_UP ? ARROW_UP : ARROW_DOWN);
