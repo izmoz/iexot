@@ -94,13 +94,15 @@ void editor_update_row(erow *row) {
 }
 void editor_append_line(const char *s, size_t len) {
     config.row = realloc(config.row, sizeof(erow) * (config.nrows + 1));
+
     size_t at = config.nrows;
     config.row[at].size = len;
     config.row[at].chars = malloc(len + 1);
-    config.row[at].rsize = 0;
-    config.row[at].render = NULL;
     memcpy(config.row[at].chars, s, len);
     config.row[at].chars[len] = '\0';
+
+    config.row[at].rsize = 0;
+    config.row[at].render = NULL;
     editor_update_row(&config.row[at]);
 
     config.nrows++;
@@ -243,7 +245,7 @@ void editor_draw_rows(struct abuf *ab) {
                 ab_append(ab, "\r\n", 1);
             }
         } else {
-            ssize_t len = config.row[filerow].rsize - config.coloff;
+            int len = config.row[filerow].rsize - config.coloff; // БАГ ТУТ БЛЯДЬ какая то хуйня с rsize
             if (len < 0)
                 len = 0;
             if (len > config.scrncols)
