@@ -245,7 +245,7 @@ void editor_draw_rows(struct abuf *ab) {
                 ab_append(ab, "\r\n", 1);
             }
         } else {
-            int len = config.row[filerow].rsize - config.coloff; // БАГ ТУТ БЛЯДЬ какая то хуйня с rsize
+            int len = config.row[filerow].rsize - config.coloff;
             if (len < 0)
                 len = 0;
             if (len > config.scrncols)
