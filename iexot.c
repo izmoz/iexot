@@ -18,8 +18,10 @@
 #define CTRL_KEY(k) ((k)&0x1f)
 #define IEXOT_VERSION "0.0.1"
 #define IEXOT_TITLE_TOP_PADDING 3
+#define IEXOT_STATUS_BAR_PADDING 5
 
 #define IEXOT_TAB_WIDTH 4
+
 enum keys {
     ARROW_UP = 1000,
     ARROW_DOWN,
@@ -184,7 +186,7 @@ void editor_init() {
     config.cx = config.cy = config.rx = 0;
     if (get_win_size(&config.scrnrows, &config.scrncols) == -1)
         die("get_win_size");
-    config.scrnrows--; // descrementing 1 line for status bar
+    config.scrnrows--; // decrementing 1 line for status bar
 }
 void editor_destroy() {
     write(STDIN_FILENO, "\x1b[2J", 4);
@@ -254,14 +256,32 @@ void editor_draw_rows(struct abuf *ab) {
         }
         ab_append(ab, "\x1b[K", 3); // escape sequence to clear the screen
 
-        if (y < config.scrnrows - 1)
+        if (y < config.scrnrows)
             ab_append(ab, "\r\n", 2);
     }
 }
 void editor_draw_statusbar(struct abuf *ab) {
-    char status[100];
-    int status_len = sprintf(status, "\r\nCurrent file: %s", config.filename);
-    ab_append(ab, status, status_len);
+    ab_append(ab,"\x1b[7m",4);
+    char lstatus[100], rstatus[100];
+    int l_len =
+        snprintf(lstatus, sizeof(lstatus), "\"%.20s\" | %d lines",
+                 config.filename ? config.filename : "[Unknown]", config.nrows);
+    int r_len = snprintf(rstatus, sizeof(rstatus), "%d : %d : %d",config.cy+1,config.cx+1,config.nrows);
+    if(l_len>config.scrncols)
+        l_len=config.scrncols;
+    if(r_len > config.scrncols-l_len)
+        r_len=config.scrncols-l_len;
+    ab_append(ab,lstatus,l_len);
+    while(l_len<config.scrncols) {
+        if(config.scrncols - l_len==r_len) {
+            ab_append(ab,rstatus,r_len);
+            break;
+        } else {
+            ab_append(ab," ",1);
+            l_len++;
+        }
+    }
+    ab_append(ab,"\x1b[m",3);
 }
 void editor_scroll() {
     config.rx = 0;
@@ -433,7 +453,7 @@ void editor_process_keypress() {
         } else if (c == PAGE_DOWN) {
             config.cy = config.scrnrows - 1 + config.rowoff;
             if (config.cy > config.nrows)
-                config.cy = config.nrows;
+                config.cy = config.nrows - 1;
         }
         int times = config.scrnrows;
         while (times--) {
