@@ -110,7 +110,7 @@ void editor_append_line(const char *s, size_t len) {
 /*** file i/o ***/
 void editor_open(const char *filename) {
     free(config.filename);
-    config.filename=strdup(filename);
+    config.filename = strdup(filename);
     FILE *fp = fopen(filename, "r");
     char *line = NULL;
     if (!fp)
@@ -180,7 +180,7 @@ void editor_init() {
     config.rowoff = 0;
     config.coloff = 0;
     config.row = NULL;
-    config.filename= NULL;
+    config.filename = NULL;
     config.cx = config.cy = config.rx = 0;
     if (get_win_size(&config.scrnrows, &config.scrncols) == -1)
         die("get_win_size");
@@ -241,7 +241,7 @@ void editor_draw_rows(struct abuf *ab) {
                     ab_append(ab, " ", 1);
                 }
                 ab_append(ab, welcome, welcomelen);
-             } else {
+            } else {
                 ab_append(ab, "\r\n", 1);
             }
         } else {
@@ -254,13 +254,13 @@ void editor_draw_rows(struct abuf *ab) {
         }
         ab_append(ab, "\x1b[K", 3); // escape sequence to clear the screen
 
-        if (y < config.scrnrows-1)
+        if (y < config.scrnrows - 1)
             ab_append(ab, "\r\n", 2);
     }
 }
 void editor_draw_statusbar(struct abuf *ab) {
     char status[100];
-    int status_len=sprintf(status, "\r\nCurrent file: %s", config.filename);
+    int status_len = sprintf(status, "\r\nCurrent file: %s", config.filename);
     ab_append(ab, status, status_len);
 }
 void editor_scroll() {
@@ -393,7 +393,7 @@ void editor_move_cursor(int k) {
         if (current_row && config.cx < current_row->size - 1)
             config.cx++;
         else if (config.cx == config.row[config.cy].size - 1 &&
-                 config.cy < config.nrows-1) {
+                 config.cy < config.nrows - 1) {
             config.cy++;
             config.cx = 0;
         }
@@ -403,12 +403,12 @@ void editor_move_cursor(int k) {
             config.cy--;
         break;
     case ARROW_DOWN:
-        if (config.cy < config.nrows-1)
+        if (config.cy < config.nrows - 1)
             config.cy++;
         break;
     }
     current_row = (config.cy >= config.nrows) ? NULL : &config.row[config.cy];
-    int rowlen = (current_row) ? current_row->rsize - 1 : 0;
+    int rowlen = (current_row) ? current_row->size - 1 : 0;
     if (config.cx > rowlen)
         config.cx = rowlen;
 }
