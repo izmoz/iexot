@@ -168,9 +168,16 @@ void editor_save() {
     int len; 
     char *buf=editor_rows_to_string(&len);
     int fd = open(config.filename, O_RDWR | O_CREAT, 0644);
-    ftruncate(fd,len);
-    write(fd,buf,len);
-    close(fd);
+    if(fd != -1) {
+        if(ftruncate(fd,len) != -1) {
+            if(write(fd,buf,len) == len) {
+                close(fd);
+                free(buf);
+                return;
+            }
+        }
+        close(fd);
+    }
     free(buf);
 }
 /*** append-buffer ***/
@@ -472,14 +479,14 @@ void editor_move_cursor(int k) {
             config.cx--;
         else if (config.cx == 0 && config.cy > 0) {
             config.cy--;
-            config.cx = config.row[config.cy].size - 1;
+            config.cx = config.row[config.cy].size;
         }
         break;
     case ARROW_RIGHT:
-        if (current_row && config.cx < current_row->size - 1)
+        if (current_row && config.cx < current_row->size)
             config.cx++;
-        else if (config.cx == config.row[config.cy].size - 1 &&
-                 config.cy < config.nrows - 1) {
+        else if (config.cx == config.row[config.cy].size &&
+                 config.cy < config.nrows- 1) {
             config.cy++;
             config.cx = 0;
         }
@@ -494,7 +501,7 @@ void editor_move_cursor(int k) {
         break;
     }
     current_row = (config.cy >= config.nrows) ? NULL : &config.row[config.cy];
-    int rowlen = (current_row) ? current_row->size - 1 : 0;
+    int rowlen = (current_row) ? current_row->size : 0;
     if (config.cx > rowlen)
         config.cx = rowlen;
 }
@@ -551,6 +558,11 @@ void editor_process_keypress() {
         break;
     case CTRL_KEY('s'):
         editor_save();
+        const time_t saved=time(NULL);
+        struct tm *time = localtime(&saved);
+        char save_msg[50];
+        snprintf(save_msg,sizeof(save_msg),"Saved at %d:%d:%d",time->tm_hour, time->tm_min, time->tm_sec);
+        editor_set_status_msg(save_msg);
         break;
     default:
         editor_insert_char(c);
