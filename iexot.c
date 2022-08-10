@@ -6,15 +6,15 @@
 #include "iexot.h"
 #include <ctype.h>
 #include <errno.h>
+#include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
 #include <termios.h>
-#include <unistd.h>
 #include <time.h>
+#include <unistd.h>
 
 /*** defines ***/
 #define CTRL_KEY(k) ((k)&0x1f)
@@ -189,9 +189,9 @@ void editor_init() {
     config.cx = config.cy = config.rx = 0;
     if (get_win_size(&config.scrnrows, &config.scrncols) == -1)
         die("get_win_size");
-    config.scrnrows-=2; // decrementing 2 lines for status bar and status message
-    config.status_msg[0]='\0';
-    config.status_msg_time=0;
+    config.scrnrows -= 2; // decrementing 2 lines for status bar and status message
+    config.status_msg[0] = '\0';
+    config.status_msg_time = 0;
 }
 void editor_destroy() {
     write(STDIN_FILENO, "\x1b[2J", 4);
@@ -288,21 +288,22 @@ void editor_draw_statusbar(struct abuf *ab) {
         }
     }
     ab_append(ab, "\x1b[m", 3);
+    ab_append(ab,"\r\n",2);
 }
 void editor_draw_messagebar(struct abuf *ab) {
     ab_append(ab, "\x1b[K", 3);
-    int msglen=strlen(config.status_msg);
-    if(msglen>config.scrncols)
-        msglen=config.scrncols;
-    if(msglen && time(NULL)-config.status_msg_time<5)
-        ab_append(ab,config.status_msg,msglen);
+    int msglen = strlen(config.status_msg);
+    if (msglen > config.scrncols)
+        msglen = config.scrncols;
+    if (msglen && time(NULL) - config.status_msg_time < 5)
+        ab_append(ab, config.status_msg, msglen);
 }
 void editor_set_status_msg(const char *fmt, ...) {
     va_list ap;
-    va_start(ap,fmt);
-    vsnprintf(config.status_msg,sizeof(config.status_msg),fmt,ap);
+    va_start(ap, fmt);
+    vsnprintf(config.status_msg, sizeof(config.status_msg), fmt, ap);
     va_end(ap);
-    config.status_msg_time=time(NULL);
+    config.status_msg_time = time(NULL);
 }
 void editor_scroll() {
     config.rx = 0;
