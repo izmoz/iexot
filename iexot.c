@@ -1,7 +1,3 @@
-/*current bugs:
- *  - blank lines throw seg fault
- */
-
 /** includes ***/
 #include "iexot.h"
 #include <ctype.h>
@@ -127,6 +123,8 @@ void editor_open(const char *filename) {
         while (linelen > 0 &&
                (line[linelen - 1] == '\r' || line[linelen - 1] == '\n'))
             linelen--;
+        if (linelen == 0 && line[0] == '\n')
+            line[linelen++] = ' ';
         editor_append_line(line, linelen);
     }
 }
@@ -189,7 +187,8 @@ void editor_init() {
     config.cx = config.cy = config.rx = 0;
     if (get_win_size(&config.scrnrows, &config.scrncols) == -1)
         die("get_win_size");
-    config.scrnrows -= 2; // decrementing 2 lines for status bar and status message
+    config.scrnrows -=
+        2; // decrementing 2 lines for status bar and status message
     config.status_msg[0] = '\0';
     config.status_msg_time = 0;
 }
@@ -288,7 +287,7 @@ void editor_draw_statusbar(struct abuf *ab) {
         }
     }
     ab_append(ab, "\x1b[m", 3);
-    ab_append(ab,"\r\n",2);
+    ab_append(ab, "\r\n", 2);
 }
 void editor_draw_messagebar(struct abuf *ab) {
     ab_append(ab, "\x1b[K", 3);
