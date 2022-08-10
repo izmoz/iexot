@@ -1,4 +1,4 @@
-/** includes ***/
+/*** includes ***/
 #include "iexot.h"
 #include <ctype.h>
 #include <errno.h>
@@ -42,6 +42,7 @@ void erow_free(erow *row) {
     free(row->chars);
     free(row);
 }
+/*** editor ***/
 struct editor_config {
     int cx, cy, rx;
     char *filename;
@@ -55,7 +56,7 @@ struct editor_config {
     erow *row;
     struct termios orig_termios;
 } config;
-
+/*** row operations ***/
 int editor_cx_to_rx(erow *row, int cx) {
     size_t i;
     int rx = 0;
@@ -93,6 +94,15 @@ void editor_update_row(erow *row) {
     row->render[idx] = '\0';
     row->rsize = idx;
 }
+void editor_row_insert_char(erow *row, int at, int c) {
+    if (at < 0 || at > row->size)
+        at = row->size;
+    row->chars = realloc(row->chars, row->size + 2);
+    memmove(&row->chars[at + 1], &row->chars[at], row->size - at + 1);
+    row->size++;
+    row->chars[at] = c;
+    editor_update_row(row);
+}
 void editor_append_line(const char *s, size_t len) {
     config.row = realloc(config.row, sizeof(erow) * (config.nrows + 1));
 
@@ -107,6 +117,13 @@ void editor_append_line(const char *s, size_t len) {
     editor_update_row(&config.row[at]);
 
     config.nrows++;
+}
+/*** editor operations ***/
+void editor_insert_char(int c) {
+    if (config.cy == config.nrows)
+        editor_append_line("", 0);
+    editor_row_insert_char(&config.row[config.cy], config.cx, c);
+    config.cx++;
 }
 /*** file i/o ***/
 void editor_open(const char *filename) {
@@ -416,7 +433,8 @@ int editor_read_key() {
                 return END_KEY;
             }
         }
-    }
+    } else {
+}
     return c;
 }
 void editor_move_cursor(int k) {
@@ -489,6 +507,9 @@ void editor_process_keypress() {
     case END_KEY:
         if (current_row && config.cy < config.nrows)
             config.cx = current_row->size - 1;
+        break;
+    default:
+        editor_insert_char(c);
         break;
     }
 }
