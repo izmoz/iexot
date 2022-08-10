@@ -20,6 +20,7 @@
 #define IEXOT_TAB_WIDTH 4
 
 enum keys {
+    BACKSPACE = 127,
     ARROW_UP = 1000,
     ARROW_DOWN,
     ARROW_LEFT,
@@ -126,6 +127,22 @@ void editor_insert_char(int c) {
     config.cx++;
 }
 /*** file i/o ***/
+char *editor_rows_to_string(int *buflen) {
+    size_t totlen=0;
+    size_t j;
+    for(j=0;j<config.nrows;j++)
+        totlen+=config.row[j].size + 1;
+    *buflen = totlen;
+    char *buf = malloc(totlen+1);
+    char *p=buf;
+    for(size_t i=0;i<config.nrows;i++) {
+        memcpy(p,config.row[i].chars,config.row[i].size);
+        p+=config.row[i].size;
+        *p='\n';
+        p++;
+    }
+    return buf;
+}
 void editor_open(const char *filename) {
     free(config.filename);
     config.filename = strdup(filename);
@@ -433,8 +450,7 @@ int editor_read_key() {
                 return END_KEY;
             }
         }
-    } else {
-}
+    }
     return c;
 }
 void editor_move_cursor(int k) {
@@ -477,15 +493,20 @@ void editor_process_keypress() {
     struct erow *current_row =
         (config.cy >= config.nrows) ? NULL : &config.row[config.cy];
     switch (c) {
+    case '\r':
+        // TODO
+        break;
     case CTRL_KEY('q'):
         editor_destroy();
         break;
+
     case ARROW_LEFT:
     case ARROW_RIGHT:
     case ARROW_UP:
     case ARROW_DOWN:
         editor_move_cursor(c);
         break;
+
     case PAGE_UP:
     case PAGE_DOWN: {
         if (c == PAGE_UP) {
@@ -501,12 +522,22 @@ void editor_process_keypress() {
         }
         break;
     }
+
     case HOME_KEY:
         config.cx = 0;
         break;
     case END_KEY:
         if (current_row && config.cy < config.nrows)
             config.cx = current_row->size - 1;
+        break;
+
+    case BACKSPACE:
+    case DEL_KEY:
+    case CTRL_KEY('h'):
+        // TODO
+        break;
+    case CTRL_KEY('l'):
+    case '\x1b':
         break;
     default:
         editor_insert_char(c);
