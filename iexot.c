@@ -2,6 +2,7 @@
 #include "iexot.h"
 #include <ctype.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -11,14 +12,13 @@
 #include <termios.h>
 #include <time.h>
 #include <unistd.h>
-
 /*** defines ***/
 #define CTRL_KEY(k) ((k)&0x1f)
 #define IEXOT_VERSION "0.0.1"
 #define IEXOT_TITLE_TOP_PADDING 3
-
+ 
 #define IEXOT_TAB_WIDTH 4
-
+ 
 enum keys {
     BACKSPACE = 127,
     ARROW_UP = 1000,
@@ -106,17 +106,17 @@ void editor_row_insert_char(erow *row, int at, int c) {
 }
 void editor_append_line(const char *s, size_t len) {
     config.row = realloc(config.row, sizeof(erow) * (config.nrows + 1));
-
+ 
     size_t at = config.nrows;
     config.row[at].size = len;
     config.row[at].chars = malloc(len + 1);
     memcpy(config.row[at].chars, s, len);
     config.row[at].chars[len] = '\0';
-
+ 
     config.row[at].rsize = 0;
     config.row[at].render = NULL;
     editor_update_row(&config.row[at]);
-
+ 
     config.nrows++;
 }
 /*** editor operations ***/
@@ -152,7 +152,7 @@ void editor_open(const char *filename) {
         die("fopen");
     size_t linecap = 0;
     ssize_t linelen;
-
+ 
     while ((linelen = getline(&line, &linecap, fp)) != -1) {
         while (linelen > 0 &&
                (line[linelen - 1] == '\r' || line[linelen - 1] == '\n'))
@@ -162,7 +162,17 @@ void editor_open(const char *filename) {
         editor_append_line(line, linelen);
     }
 }
-
+void editor_save() {
+    if(config.filename == NULL)
+        return;
+    int len; 
+    char *buf=editor_rows_to_string(&len);
+    int fd = open(config.filename, O_RDWR | O_CREAT, 0644);
+    ftruncate(fd,len);
+    write(fd,buf,len);
+    close(fd);
+    free(buf);
+}
 /*** append-buffer ***/
 struct abuf {
     char *b;
@@ -199,7 +209,7 @@ int get_cursor_position(unsigned *rows, unsigned *cols) {
         return -1;
     return 0;
 }
-
+ 
 int get_win_size(unsigned *rows, unsigned *cols) {
     struct winsize ws;
     if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0) {
@@ -246,7 +256,7 @@ void enable_raw_mode() {
     if (tcgetattr(STDIN_FILENO, &config.orig_termios) == -1)
         die("tcgetattr");
     atexit(disable_raw_mode);
-
+ 
     struct termios raw = config.orig_termios;
     raw.c_oflag &= ~(OPOST);
     raw.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
@@ -254,11 +264,11 @@ void enable_raw_mode() {
     raw.c_lflag |= (CS8);
     raw.c_cc[VMIN] = 0;
     raw.c_cc[VTIME] = 10;
-
+ 
     if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == -1)
         die("tcsetattr");
 }
-
+ 
 /*** output ***/
 void editor_draw_rows(struct abuf *ab) {
     size_t y;
@@ -293,7 +303,7 @@ void editor_draw_rows(struct abuf *ab) {
             ab_append(ab, &config.row[filerow].render[config.coloff], len);
         }
         ab_append(ab, "\x1b[K", 3); // escape sequence to clear the screen
-
+ 
         if (y < config.scrnrows)
             ab_append(ab, "\r\n", 2);
     }
@@ -342,12 +352,12 @@ void editor_scroll() {
     config.rx = 0;
     if (config.cy < config.nrows)
         config.rx = editor_cx_to_rx(&config.row[config.cy], config.cx);
-
+ 
     if (config.cy < config.rowoff)
         config.rowoff = config.cy;
     if (config.cy >= config.rowoff + config.scrnrows)
         config.rowoff = config.cy - config.scrnrows + 1;
-
+ 
     if (config.rx < config.coloff)
         config.coloff = config.rx;
     if (config.rx >= config.coloff + config.scrncols)
@@ -358,22 +368,22 @@ void editor_clear_scrn() {
     struct abuf ab = ABUF_INIT;
     ab_append(&ab, "\x1b[?25l", 6); // hide the cursor when repainting
     ab_append(&ab, "\x1b[H", 3);    // escape sequence to move the cursor
-
+ 
     editor_draw_rows(&ab);
     editor_draw_statusbar(&ab);
     editor_draw_messagebar(&ab);
-
+ 
     char buf[100];
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH", config.cy - config.rowoff + 1,
              config.rx - config.coloff + 1); // updating cursor position
-
+ 
     ab_append(&ab, buf, strlen(buf));
     ab_append(&ab, "\x1b[?25h", 6);
-
+ 
     write(STDOUT_FILENO, ab.b, ab.len);
     ab_free(&ab);
 }
-
+ 
 /*** input ***/
 int editor_read_key() {
     int nread;
@@ -499,14 +509,14 @@ void editor_process_keypress() {
     case CTRL_KEY('q'):
         editor_destroy();
         break;
-
+ 
     case ARROW_LEFT:
     case ARROW_RIGHT:
     case ARROW_UP:
     case ARROW_DOWN:
         editor_move_cursor(c);
         break;
-
+ 
     case PAGE_UP:
     case PAGE_DOWN: {
         if (c == PAGE_UP) {
@@ -522,7 +532,7 @@ void editor_process_keypress() {
         }
         break;
     }
-
+ 
     case HOME_KEY:
         config.cx = 0;
         break;
@@ -530,7 +540,7 @@ void editor_process_keypress() {
         if (current_row && config.cy < config.nrows)
             config.cx = current_row->size - 1;
         break;
-
+ 
     case BACKSPACE:
     case DEL_KEY:
     case CTRL_KEY('h'):
@@ -538,6 +548,9 @@ void editor_process_keypress() {
         break;
     case CTRL_KEY('l'):
     case '\x1b':
+        break;
+    case CTRL_KEY('s'):
+        editor_save();
         break;
     default:
         editor_insert_char(c);
