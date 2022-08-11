@@ -18,8 +18,8 @@
 #define IEXOT_TITLE_TOP_PADDING 3
 
 #define IEXOT_TAB_WIDTH 4
-
-enum keys {
+/*** enums ***/
+enum KEYS {
     BACKSPACE = 127,
     ARROW_UP = 1000,
     ARROW_DOWN,
@@ -31,6 +31,7 @@ enum keys {
     END_KEY,
     DEL_KEY,
 };
+enum INPUT_TURN { EDITOR, STATUS };
 typedef struct erow {
     int size;
     int rsize;
@@ -50,7 +51,7 @@ struct editor_config {
     char status_msg[100];
     time_t status_msg_time;
     int nmodifications;
-    int is_wait_for_input;
+    int input_turn;
     unsigned scrnrows;
     unsigned scrncols;
     unsigned nrows;
@@ -178,7 +179,6 @@ void editor_save() {
             if (write(fd, buf, len) == len) {
                 close(fd);
                 free(buf);
-                editor_set_status_msg("%d bytes saved");
                 const time_t saved = time(NULL);
                 struct tm *time = localtime(&saved);
                 char save_msg[50];
@@ -257,7 +257,7 @@ void editor_init() {
     config.status_msg[0] = '\0';
     config.status_msg_time = 0;
     config.nmodifications = 0;
-    config.is_wait_for_input = 0;
+    config.input_turn = EDITOR;
 }
 void editor_destroy() {
     write(STDIN_FILENO, "\x1b[2J", 4);
@@ -362,7 +362,7 @@ void editor_draw_messagebar(struct abuf *ab) {
     int msglen = strlen(config.status_msg);
     if (msglen > config.scrncols)
         msglen = config.scrncols;
-    if (msglen && time(NULL) - config.status_msg_time < 5)
+    if (msglen && time(NULL) - config.status_msg_time < 1)
         ab_append(ab, config.status_msg, msglen);
 }
 void editor_set_status_msg(const char *fmt, ...) {
@@ -523,9 +523,7 @@ void editor_move_cursor(int k) {
         config.cx = rowlen;
 }
 void editor_process_keypress() {
-    int c;
-    if (config.is_wait_for_input == 0)
-        c = editor_read_key();
+    int c = editor_read_key();
     struct erow *current_row =
         (config.cy >= config.nrows) ? NULL : &config.row[config.cy];
     switch (c) {
@@ -537,22 +535,14 @@ void editor_process_keypress() {
             editor_set_status_msg("You have %d unsaved changes. Do you really "
                                   "want to quit? (y/n)...",
                                   config.nmodifications);
-            config.is_wait_for_input = 1;
-            do
-                c = editor_read_key();
-            while (c != 'y' && c != 'n');
-            config.is_wait_for_input = 0;
+            editor_clear_scrn();
+            while ((c = editor_read_key()) != 'y' && c != 'n');
             if (c == 'y')
                 editor_destroy();
-            else if (c == 'n')
-                return;
         } else
             editor_destroy();
-        write(STDOUT_FILENO, "\x1b[2J", 4);
-        write(STDOUT_FILENO, "\x1b[H", 3);
-        exit(0);
         break;
-        break;
+
     case CTRL_KEY('k'):
         editor_destroy();
         break;

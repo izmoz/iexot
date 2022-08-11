@@ -6,6 +6,7 @@ void enable_raw_mode();
 int editor_read_key();
 void editor_process_keypress();
 void editor_destroy();
+void editor_set_status_msg(const char *fmt, ...);
 
 void draw_rows();
 void clear_scrn();
