@@ -108,10 +108,29 @@ void editor_row_insert_char(erow *row, int at, int c) {
     config.nmodifications++;
     editor_update_row(row);
 }
+void editor_free_row(erow *row) {
+    free(row->render);
+    free(row->chars);
+}
+void editor_del_row(int at) {
+    if(at<0 || at>=config.nrows) return;
+    editor_free_row(&config.row[at]);
+    memmove(&config.row[at],&config.row[at+1],sizeof(erow) * (config.nrows-at-1));
+    config.nrows--;
+    config.nmodifications++;
+}
+void editor_row_append_string(erow *row, const char *s, size_t len) {
+    row->chars = realloc(row->chars,row->size+len+1);
+    memcpy(&row->chars[row->size],s,len);
+    row->size+=len;
+    row->chars[row->size]='\0';
+    editor_update_row(row);
+    config.nmodifications++;
+}
 void editor_row_del_char(erow *row, int at) {
-    if (at < 0 || at >= row->size)
+    if (at < 0 || at >= row->size+1)
         return;
-    memmove(&row->chars[at], &row->chars[at + 1], row->size - at);
+    memmove(&row->chars[at-1], &row->chars[at], row->size - at);
     row->size--;
     config.nmodifications++;
     editor_update_row(row);
@@ -142,9 +161,16 @@ void editor_insert_char(int c) {
 void editor_del_char() {
     if (config.cy == config.nrows)
         return;
+    if(config.cx==0 && config.cy==0) return;
+    erow *row = &config.row[config.cy];
     if (config.cx > 0) {
         editor_row_del_char(&config.row[config.cy], config.cx);
         config.cx--;
+    } else {
+        config.cx=config.row[config.cy-1].size; // -1?
+        editor_row_append_string(&config.row[config.cy-1],row->chars, row->size);
+        editor_del_row(config.cy);
+        config.cy--;
     }
 }
 /*** file i/o ***/
@@ -593,7 +619,6 @@ void editor_process_keypress() {
         if (current_row && config.cy < config.nrows)
             config.cx = current_row->size - 1;
         break;
-
     case BACKSPACE:
     case DEL_KEY:
     case CTRL_KEY('h'):
