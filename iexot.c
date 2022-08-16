@@ -108,6 +108,14 @@ void editor_row_insert_char(erow *row, int at, int c) {
     config.nmodifications++;
     editor_update_row(row);
 }
+void editor_row_del_char(erow *row, int at) {
+    if (at < 0 || at >= row->size)
+        return;
+    memmove(&row->chars[at], &row->chars[at + 1], row->size - at);
+    row->size--;
+    config.nmodifications++;
+    editor_update_row(row);
+}
 void editor_append_line(const char *s, size_t len) {
     config.row = realloc(config.row, sizeof(erow) * (config.nrows + 1));
 
@@ -130,6 +138,14 @@ void editor_insert_char(int c) {
         editor_append_line("", 0);
     editor_row_insert_char(&config.row[config.cy], config.cx, c);
     config.cx++;
+}
+void editor_del_char() {
+    if (config.cy == config.nrows)
+        return;
+    if (config.cx > 0) {
+        editor_row_del_char(&config.row[config.cy], config.cx);
+        config.cx--;
+    }
 }
 /*** file i/o ***/
 char *editor_rows_to_string(int *buflen) {
@@ -536,7 +552,8 @@ void editor_process_keypress() {
                                   "want to quit? (y/n)...",
                                   config.nmodifications);
             editor_clear_scrn();
-            while ((c = editor_read_key()) != 'y' && c != 'n');
+            while ((c = editor_read_key()) != 'y' && c != 'n')
+                ;
             if (c == 'y')
                 editor_destroy();
         } else
@@ -580,7 +597,9 @@ void editor_process_keypress() {
     case BACKSPACE:
     case DEL_KEY:
     case CTRL_KEY('h'):
-        // TODO
+        if (c == DEL_KEY)
+            editor_move_cursor(ARROW_RIGHT);
+        editor_del_char();
         break;
     case CTRL_KEY('l'):
     case '\x1b':
