@@ -394,7 +394,6 @@ void enable_raw_mode() {
 }
 
 /*** output ***/
-// FIX: fix extra space while drawing blank file
 void editor_draw_rows(struct abuf *ab) {
     size_t y;
     for (y = 0; y < config.scrnrows; ++y) {
