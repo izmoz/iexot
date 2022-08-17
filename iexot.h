@@ -7,9 +7,9 @@ int editor_read_key();
 void editor_process_keypress();
 void editor_destroy();
 void editor_set_status_msg(const char *fmt, ...);
+char *editor_prompt(char *prompt);
 
-void draw_rows();
-void clear_scrn();
+void editor_clear_scrn();
 
 int get_win_size(unsigned *rows, unsigned *cols);
 int get_cursor_position(unsigned *rows, unsigned *cols);
