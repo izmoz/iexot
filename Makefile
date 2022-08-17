@@ -1,2 +1,2 @@
 iexot: iexot.c
-	$(CC) iexot.c -o iexot -Wall
+	$(CC) iexot.c -g -o iexot -Wall

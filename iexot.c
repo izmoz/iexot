@@ -416,8 +416,8 @@ void editor_draw_rows(struct abuf *ab) {
                     ab_append(ab, " ", 1);
                 }
                 ab_append(ab, welcome, welcomelen);
-            } else {
-                ab_append(ab, "\r\n", 1);
+            } else if (config.nrows == 0 && y > IEXOT_TITLE_TOP_PADDING) {
+                ab_append(ab, "~", 1);
             }
         } else {
             int len = config.row[filerow].rsize - config.coloff;
@@ -428,7 +428,6 @@ void editor_draw_rows(struct abuf *ab) {
             ab_append(ab, &config.row[filerow].render[config.coloff], len);
         }
         ab_append(ab, "\x1b[K", 3); // escape sequence to clear the screen
-
         if (y < config.scrnrows)
             ab_append(ab, "\r\n", 2);
     }
