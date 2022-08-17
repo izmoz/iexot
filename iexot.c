@@ -113,32 +113,37 @@ void editor_free_row(erow *row) {
     free(row->chars);
 }
 void editor_del_row(int at) {
-    if(at<0 || at>=config.nrows) return;
+    if (at < 0 || at >= config.nrows)
+        return;
     editor_free_row(&config.row[at]);
-    memmove(&config.row[at],&config.row[at+1],sizeof(erow) * (config.nrows-at-1));
+    memmove(&config.row[at], &config.row[at + 1],
+            sizeof(erow) * (config.nrows - at - 1));
     config.nrows--;
     config.nmodifications++;
 }
 void editor_row_append_string(erow *row, const char *s, size_t len) {
-    row->chars = realloc(row->chars,row->size+len+1);
-    memcpy(&row->chars[row->size],s,len);
-    row->size+=len;
-    row->chars[row->size]='\0';
+    row->chars = realloc(row->chars, row->size + len + 1);
+    memcpy(&row->chars[row->size], s, len);
+    row->size += len;
+    row->chars[row->size] = '\0';
     editor_update_row(row);
     config.nmodifications++;
 }
 void editor_row_del_char(erow *row, int at) {
-    if (at < 0 || at >= row->size+1)
+    if (at < 0 || at >= row->size + 1)
         return;
-    memmove(&row->chars[at-1], &row->chars[at], row->size - at);
+    memmove(&row->chars[at - 1], &row->chars[at], row->size - at);
     row->size--;
     config.nmodifications++;
     editor_update_row(row);
 }
-void editor_append_line(const char *s, size_t len) {
+void editor_append_line(int at, const char *s, size_t len) {
+    if (at < 0 || at > config.nrows)
+        return;
     config.row = realloc(config.row, sizeof(erow) * (config.nrows + 1));
+    memmove(&config.row[at + 1], &config.row[at],
+            sizeof(erow) * (config.nrows - at));
 
-    size_t at = config.nrows;
     config.row[at].size = len;
     config.row[at].chars = malloc(len + 1);
     memcpy(config.row[at].chars, s, len);
@@ -154,21 +159,70 @@ void editor_append_line(const char *s, size_t len) {
 /*** editor operations ***/
 void editor_insert_char(int c) {
     if (config.cy == config.nrows)
-        editor_append_line("", 0);
+        editor_append_line(config.nrows, "", 0);
     editor_row_insert_char(&config.row[config.cy], config.cx, c);
     config.cx++;
+}
+void editor_insert_new_line() {
+    if (config.cx == 0) {
+        editor_append_line(config.cy, "", 0);
+    } else {
+        erow *row = &config.row[config.cy];
+        editor_append_line(config.cy + 1, &row->chars[config.cx],
+                           row->size - config.cx);
+        row = &config.row[config.cy];
+        row->size = config.cx;
+        row->chars[row->size] = '\0';
+        editor_update_row(row);
+    }
+    config.cy++;
+    config.cx = 0;
+}
+char *editor_prompt(char *prompt) {
+    size_t bufsize = 128;
+    char *buf = malloc(bufsize);
+
+    size_t buflen = 0;
+    buf[0] = '\0';
+    while (1) {
+        editor_set_status_msg(prompt, buf);
+        editor_clear_scrn();
+        int c = editor_read_key();
+        if (c == BACKSPACE) {
+            if (buflen != 0)
+                buf[--buflen] = '\0';
+        } else if (c == '\x1b') {
+            editor_set_status_msg("");
+            free(buf);
+            return NULL;
+        } else if (c == '\r') {
+            if (buflen != 0) {
+                editor_set_status_msg("");
+                return buf;
+            }
+        } else if (!iscntrl(c) && c < 128) {
+            if (buflen == bufsize - 1) {
+                bufsize *= 2;
+                buf = realloc(buf, bufsize);
+            }
+            buf[buflen++] = c;
+            buf[buflen] = '\0';
+        }
+    }
 }
 void editor_del_char() {
     if (config.cy == config.nrows)
         return;
-    if(config.cx==0 && config.cy==0) return;
+    if (config.cx == 0 && config.cy == 0)
+        return;
     erow *row = &config.row[config.cy];
     if (config.cx > 0) {
         editor_row_del_char(&config.row[config.cy], config.cx);
         config.cx--;
     } else {
-        config.cx=config.row[config.cy-1].size; // -1?
-        editor_row_append_string(&config.row[config.cy-1],row->chars, row->size);
+        config.cx = config.row[config.cy - 1].size; // -1?
+        editor_row_append_string(&config.row[config.cy - 1], row->chars,
+                                 row->size);
         editor_del_row(config.cy);
         config.cy--;
     }
@@ -206,13 +260,18 @@ void editor_open(const char *filename) {
             linelen--;
         if (linelen == 0 && line[0] == '\n')
             line[linelen++] = ' ';
-        editor_append_line(line, linelen);
+        editor_append_line(config.nrows, line, linelen);
     }
     config.nmodifications = 0;
 }
 void editor_save() {
-    if (config.filename == NULL)
-        return;
+    if (config.filename == NULL) {
+        config.filename = editor_prompt("Save as: %s (ESC to cancel)");
+        if (!config.filename) {
+            editor_set_status_msg("Save aborted.");
+            return;
+        }
+    }
     int len;
     char *buf = editor_rows_to_string(&len);
     int fd = open(config.filename, O_RDWR | O_CREAT, 0644);
@@ -335,6 +394,7 @@ void enable_raw_mode() {
 }
 
 /*** output ***/
+// FIX: fix extra space while drawing blank file
 void editor_draw_rows(struct abuf *ab) {
     size_t y;
     for (y = 0; y < config.scrnrows; ++y) {
@@ -570,7 +630,7 @@ void editor_process_keypress() {
         (config.cy >= config.nrows) ? NULL : &config.row[config.cy];
     switch (c) {
     case '\r':
-        // TODO
+        editor_insert_new_line();
         break;
     case CTRL_KEY('q'):
         if (config.nmodifications > 0) {
