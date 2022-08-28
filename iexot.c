@@ -47,6 +47,8 @@ void erow_free(erow *row) {
 /*** editor ***/
 struct editor_config {
     int cx, cy, rx;
+    int flag_mv_line;
+    int prevx;
     char *filename;
     char status_msg[100];
     time_t status_msg_time;
@@ -350,7 +352,9 @@ void editor_init() {
     config.coloff = 0;
     config.row = NULL;
     config.filename = NULL;
-    config.cx = config.cy = config.rx = 0;
+    config.cx = config.cy = config.rx;
+    config.prevx = 0;
+    config.flag_mv_line = 0;
     if (get_win_size(&config.scrnrows, &config.scrncols) == -1)
         die("get_win_size");
     config.scrnrows -=
@@ -496,7 +500,6 @@ void editor_clear_scrn() {
     editor_draw_rows(&ab);
     editor_draw_statusbar(&ab);
     editor_draw_messagebar(&ab);
-
     char buf[100];
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH", config.cy - config.rowoff + 1,
              config.rx - config.coloff + 1); // updating cursor position
@@ -590,6 +593,7 @@ int editor_read_key() {
 void editor_move_cursor(int k) {
     struct erow *current_row =
         (config.cy >= config.nrows) ? NULL : &config.row[config.cy];
+    config.flag_mv_line = 0;
     switch (k) {
     case ARROW_LEFT:
         if (config.cx != 0)
@@ -598,6 +602,7 @@ void editor_move_cursor(int k) {
             config.cy--;
             config.cx = config.row[config.cy].size;
         }
+        config.prevx = 0;
         break;
     case ARROW_RIGHT:
         if (current_row && config.cx < current_row->size)
@@ -607,20 +612,31 @@ void editor_move_cursor(int k) {
             config.cy++;
             config.cx = 0;
         }
+        config.prevx = 0;
         break;
     case ARROW_UP:
-        if (config.cy != 0)
+        if (config.cy != 0) {
             config.cy--;
+            config.flag_mv_line = 1;
+        }
         break;
     case ARROW_DOWN:
-        if (config.cy < config.nrows - 1)
+        if (config.cy < config.nrows - 1) {
             config.cy++;
+            config.flag_mv_line = 1;
+        }
         break;
     }
+    //TODO: rewrite this shit code.
+    if(config.cx > config.prevx)
+        config.prevx = config.cx;
     current_row = (config.cy >= config.nrows) ? NULL : &config.row[config.cy];
     int rowlen = (current_row) ? current_row->size : 0;
-    if (config.cx > rowlen)
+    if(config.flag_mv_line/*  && (config.prevx > rowlen || config.prevx < rowlen) */)
+        config.cx = config.prevx;
+    if (config.flag_mv_line && config.cx > rowlen) {
         config.cx = rowlen;
+    }
 }
 void editor_process_keypress() {
     int c = editor_read_key();
