@@ -188,6 +188,8 @@ void editor_jump_next_word() {
     static int flag_punct=0;
     if(isspace(line[config.cx]))
         flag = 1;
+    else if(isalpha(line[config.cx]))
+        flag = 0;
     if(ispunct(line[config.cx]))
         flag_punct = 1;
     else flag_punct = 0;
@@ -196,7 +198,7 @@ void editor_jump_next_word() {
             flag = 1;
         if(!ispunct(line[config.cx + i]))
             flag_punct = 0;
-        if(!flag_punct && ispunct(line[config.cx+i])) {
+        if(!flag_punct && ispunct(line[config.cx+i]) && line[config.cx + i]!='_') {
             for(size_t j=0;j<i;j++)
                 editor_move_cursor(ARROW_RIGHT);
             flag_punct = 1;
@@ -215,9 +217,57 @@ void editor_jump_next_word() {
             flag = 0;
             return;
         }
-        
+    }
+    if(config.cx + i == sz)  {
+        for(size_t j=0;j<=i;j++)
+            editor_move_cursor(ARROW_RIGHT);
+        flag = 0;
     }
 }
+void editor_jump_prev_word() {
+    char *line = config.row[config.cy].chars;
+    int i;
+    static int flag = 0;
+    static int flag_punct=0;
+    if(isspace(line[config.cx]))
+        flag = 1;
+    else if(isalpha(line[config.cx]))
+        flag = 0;
+    if(ispunct(line[config.cx]))
+        flag_punct = 1;
+    else flag_punct = 0;
+    for(i=0; config.cx- i >= 0;i++) {
+        if(isspace(line[config.cx - i]))
+            flag = 1;
+        if(!ispunct(line[config.cx -i]))
+            flag_punct = 0;
+        if(!flag_punct && ispunct(line[config.cx-i]) && line[config.cx -i ]!='_') {
+            for(size_t j=0;j<i;j++)
+                editor_move_cursor(ARROW_LEFT);
+            flag_punct = 1;
+            flag = 1;
+            return;
+        }
+        if(flag && isalpha(line[config.cx-i])) {
+            for(size_t j=0;j<i;j++)
+                editor_move_cursor(ARROW_LEFT);
+            flag = 0;
+            return;
+        }
+        if(flag && isdigit(line[config.cx - i])) {
+            for(size_t j=0;j<i;j++)
+                editor_move_cursor(ARROW_LEFT);
+            flag = 0;
+            return;
+        }
+    }
+    if(config.cx - i <= 0)  {
+        for(size_t j=0;j<=i;j++)
+            editor_move_cursor(ARROW_LEFT);
+        flag = 0;
+    }
+}
+
 char *editor_prompt(char *prompt) {
     size_t bufsize = 128;
     char *buf = malloc(bufsize);
@@ -753,6 +803,9 @@ void editor_process_keypress() {
         break;
     case CTRL_KEY('w'):
         editor_jump_next_word();
+        break;
+    case CTRL_KEY('b'):
+        editor_jump_prev_word();
         break;
     default:
         editor_insert_char(c);
