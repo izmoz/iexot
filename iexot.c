@@ -180,6 +180,45 @@ void editor_insert_new_line() {
     config.cy++;
     config.cx = 0;
 }
+void editor_jump_next_word() {
+    size_t sz = config.row[config.cy].size;
+    char *line = config.row[config.cy].chars;
+    int i;
+    static int flag = 0;
+    // static int flag_punct=0;
+    if(isspace(line[config.cx]))
+        flag = 1;
+    //else flag = 0;
+    // if(ispunct(line[config.cx]))
+    //     flag_punct = 1;
+    // else flag_punct = 0;
+    for(i=0;i+config.cx<sz;i++) {
+        if(isspace(line[config.cx + i]))
+            flag = 1;
+        // if(!ispunct(line[config.cx + i]))
+        //     flag_punct = 0;
+        // Separate condiitons....
+        // if((!flag && ispunct(line[config.cx + i])) || (flag && line[config.cx + i]!='_')) {
+        //     for(size_t j=0;j<i;j++)
+        //         editor_move_cursor(ARROW_RIGHT);
+        //     // flag = 1;
+        //     return;
+        // }
+        if(flag && isalpha(line[i+config.cx])) {
+            for(size_t j=0;j<i;j++)
+                editor_move_cursor(ARROW_RIGHT);
+            flag = 0;
+            return;
+        }
+        if(flag && isdigit(line[config.cx + i])) {
+            for(size_t j=0;j<i;j++)
+                editor_move_cursor(ARROW_RIGHT);
+            flag = 0;
+            return;
+        }
+        
+    }
+}
 char *editor_prompt(char *prompt) {
     size_t bufsize = 128;
     char *buf = malloc(bufsize);
@@ -587,6 +626,17 @@ int editor_read_key() {
                 return END_KEY;
             }
         }
+    } else {
+        switch(c) {
+            case CTRL_KEY('h'):
+                return ARROW_LEFT;
+            case CTRL_KEY('j'):
+                return ARROW_DOWN;
+            case CTRL_KEY('k'):
+                return ARROW_UP;
+            case CTRL_KEY('l'):
+                return ARROW_RIGHT;
+        }
     }
     return c;
 }
@@ -660,9 +710,6 @@ void editor_process_keypress() {
             editor_destroy();
         break;
 
-    case CTRL_KEY('k'):
-        editor_destroy();
-        break;
     case ARROW_LEFT:
     case ARROW_RIGHT:
     case ARROW_UP:
@@ -695,7 +742,6 @@ void editor_process_keypress() {
         break;
     case BACKSPACE:
     case DEL_KEY:
-    case CTRL_KEY('h'):
         if (c == DEL_KEY)
             editor_move_cursor(ARROW_RIGHT);
         editor_del_char();
@@ -705,6 +751,9 @@ void editor_process_keypress() {
         break;
     case CTRL_KEY('s'):
         editor_save();
+        break;
+    case CTRL_KEY('w'):
+        editor_jump_next_word();
         break;
     default:
         editor_insert_char(c);
