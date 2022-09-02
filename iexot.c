@@ -758,18 +758,19 @@ void editor_process_keypress() {
         break;
     case CTRL_KEY('q'):
         if (config.nmodifications > 0) {
-            editor_set_status_msg("You have %d unsaved changes. Do you really "
-                                  "want to quit? (y/n)...",
-                                  config.nmodifications);
-            editor_clear_scrn();
-            while ((c = editor_read_key()) != 'y' && c != 'n')
-                ;
-            if (c == 'y')
+            char msg_buf[100];
+            sprintf(msg_buf, "You have %d unsaved changes. Do you really want to quit? (y/n) ",config.nmodifications);
+            strcat(msg_buf,"%s");
+            char *ans = editor_prompt(msg_buf);
+            if(0 == strcmp(ans,"y"))
                 editor_destroy();
         } else
             editor_destroy();
         break;
 
+    case CTRL_KEY('Y'):
+        editor_destroy();
+        break;
     case ARROW_LEFT:
     case ARROW_RIGHT:
     case ARROW_UP:
