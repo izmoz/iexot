@@ -279,6 +279,14 @@ void editor_jmp_line_boundaries (int arg) {
             config.cx = config.row[config.cy].size - 1;
     }
 }
+void editor_find(char *pattern) {
+    char *p = NULL;
+    for(size_t i=0;i<config.nrows;i++) {
+        if((p = strstr(config.row[i].chars, pattern))) {
+            config.cy = i;
+        }
+    }
+}
 char *editor_prompt(char *prompt) {
     size_t bufsize = 128;
     char *buf = malloc(bufsize);
@@ -767,10 +775,6 @@ void editor_process_keypress() {
         } else
             editor_destroy();
         break;
-
-    case CTRL_KEY('Y'):
-        editor_destroy();
-        break;
     case ARROW_LEFT:
     case ARROW_RIGHT:
     case ARROW_UP:
@@ -823,6 +827,25 @@ void editor_process_keypress() {
         break;
     case CTRL_KEY('a'):
         editor_jmp_line_boundaries(0);
+        break;
+    case CTRL_KEY('g'): {
+        char ch = editor_read_key();
+        switch (ch) {
+            case 's':
+                config.cx = config.cy = 0;
+                break;
+            case 'e':
+                config.cy = config.nrows - 1;
+                break;
+            case 'm':
+                config.cy = config.nrows / 2;
+                break;
+        }
+        break;
+    }
+    case CTRL_KEY('f'):
+        char *pattern = editor_prompt("Search: %s");
+        editor_find(pattern);
         break;
     default:
         editor_insert_char(c);
