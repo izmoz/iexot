@@ -14,6 +14,7 @@
 #include <unistd.h>
 /*** defines ***/
 #define CTRL_KEY(k) ((k)&0x1f)
+#define SHIFT_KEY(k) ((k)&0x5f)
 #define IEXOT_VERSION "0.0.1"
 #define IEXOT_TITLE_TOP_PADDING 3
 
@@ -180,7 +181,7 @@ void editor_insert_new_line() {
     config.cy++;
     config.cx = 0;
 }
-void editor_jump_next_word() {
+void editor_jmp_next_word() {
     size_t sz = config.row[config.cy].size;
     char *line = config.row[config.cy].chars;
     int i;
@@ -224,7 +225,7 @@ void editor_jump_next_word() {
         flag = 0;
     }
 }
-void editor_jump_prev_word() {
+void editor_jmp_prev_word() {
     char *line = config.row[config.cy].chars;
     int i;
     static int flag = 0;
@@ -267,7 +268,17 @@ void editor_jump_prev_word() {
         flag = 0;
     }
 }
-
+//TODO: refactor it
+void editor_jmp_line_boundaries (int arg) {
+    if(config.row[config.cy].size > 1) {
+        if(arg == 0) {      // 0 means "jump on the beggining of line" 
+            config.cx = 0;
+            for(;isspace(config.row[config.cy].chars[config.cx]);config.cx++);
+        }
+        else if(arg == 1)   // 1 means "jump on the end of line"
+            config.cx = config.row[config.cy].size - 1;
+    }
+}
 char *editor_prompt(char *prompt) {
     size_t bufsize = 128;
     char *buf = malloc(bufsize);
@@ -795,17 +806,22 @@ void editor_process_keypress() {
             editor_move_cursor(ARROW_RIGHT);
         editor_del_char();
         break;
-    case CTRL_KEY('l'):
     case '\x1b':
         break;
     case CTRL_KEY('s'):
         editor_save();
         break;
-    case CTRL_KEY('w'):
-        editor_jump_next_word();
-        break;
+    case CTRL_KEY('w') :
+       editor_jmp_next_word();
+       break;
     case CTRL_KEY('b'):
-        editor_jump_prev_word();
+        editor_jmp_prev_word();
+        break;
+    case CTRL_KEY('e'):
+        editor_jmp_line_boundaries(1);
+        break;
+    case CTRL_KEY('a'):
+        editor_jmp_line_boundaries(0);
         break;
     default:
         editor_insert_char(c);
