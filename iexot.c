@@ -12,6 +12,7 @@
 #include <termios.h>
 #include <time.h>
 #include <unistd.h>
+#include "linked_list.h"
 /*** defines ***/
 #define CTRL_KEY(k) ((k)&0x1f)
 #define SHIFT_KEY(k) ((k)&0x5f)
@@ -62,6 +63,10 @@ struct editor_config {
     unsigned coloff;
     erow *row;
     struct termios orig_termios;
+
+    Node *current_search_match;
+    Node *search_list_head;
+    Node *search_list_tail;
 } config;
 /*** row operations ***/
 int editor_cx_to_rx(erow *row, int cx) {
@@ -279,11 +284,40 @@ void editor_jmp_line_boundaries (int arg) {
             config.cx = config.row[config.cy].size - 1;
     }
 }
-void editor_find(char *pattern) {
+// maybe not necessary
+int editor_chrptr_to_cx (char *p) {
+    int i;
+    for(i=0;i<config.row[config.cy].size && p != (config.row[config.cy].chars+i);i++);
+    return i;
+}
+void editor_find() {
     char *p = NULL;
+    char *pattern = editor_prompt("Search: %s");
+    if(NULL == pattern)
+        return;
+    list_free(config.search_list_head, config.search_list_tail);
+    config.search_list_head = NULL;
+    config.search_list_tail = NULL;
+    // free(config.current_search_match);
     for(size_t i=0;i<config.nrows;i++) {
-        if((p = strstr(config.row[i].chars, pattern))) {
-            config.cy = i;
+        erow *row = &config.row[i];
+        if((p = strstr(row->chars, pattern))) {
+            Node *match = create_node(i,p);
+            push_back(match, &config.search_list_head, &config.search_list_tail);
+            // config.cy = i;
+            // config.cx += p - row->chars;
+        }
+    }
+    if(!config.search_list_head)
+        editor_set_status_msg("Pattern \"%s\" not found", pattern);
+    else {
+        config.current_search_match = malloc(sizeof(Node *));
+        if(config.current_search_match) {
+            config.current_search_match = config.search_list_head;
+
+            config.cy = config.current_search_match->cy;
+            config.cx = editor_chrptr_to_cx( config.current_search_match->p);
+            config.current_search_match = config.current_search_match->next;
         }
     }
 }
@@ -470,11 +504,16 @@ void editor_init() {
     config.status_msg_time = 0;
     config.nmodifications = 0;
     config.input_turn = EDITOR;
+    config.search_list_head = NULL;
+    config.search_list_tail = NULL;
+    config.current_search_match = NULL;
 }
 void editor_destroy() {
     write(STDIN_FILENO, "\x1b[2J", 4);
     write(STDIN_FILENO, "\x1b[H", 3);
     erow_free(config.row);
+    // list_free(config.search_list_head, config.search_list_tail);
+    free(config.current_search_match);
     exit(0);
 }
 void die(const char *s) {
@@ -494,7 +533,7 @@ void enable_raw_mode() {
 
     struct termios raw = config.orig_termios;
     raw.c_oflag &= ~(OPOST);
-    raw.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
+    raw.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON );
     raw.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
     raw.c_lflag |= (CS8);
     raw.c_cc[VMIN] = 0;
@@ -844,8 +883,14 @@ void editor_process_keypress() {
         break;
     }
     case CTRL_KEY('f'):
-        char *pattern = editor_prompt("Search: %s");
-        editor_find(pattern);
+        editor_find();
+        break;
+    case CTRL_KEY('n'):
+        if(config.current_search_match) {
+            config.cy = config.current_search_match->cy;
+            config.cx = editor_chrptr_to_cx( config.current_search_match->p);
+            config.current_search_match = config.current_search_match->next;
+        }
         break;
     default:
         editor_insert_char(c);
