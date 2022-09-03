@@ -52,17 +52,3 @@ void list_free(Node *head, Node *tail) {
         p=n;
     }
 }
-// int main(void) {
-//     Node *head = NULL;
-//     Node *tail = NULL;
-//     Node *n1 = create_node(1,NULL);
-//     push_back(n1,&head,&tail);
-//     Node *n2 = create_node(2,NULL);
-//     push_back(n2,&head,&tail);
-//     Node *n3 = create_node(3,NULL);
-//     push_back(n3,&head,&tail);
-//     Node *n4 = create_node(4,NULL);
-//     push_back(n4,&head,&tail);
-//     list_print(head);
-//     list_free(head,tail);
-// }
