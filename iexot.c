@@ -36,7 +36,8 @@ enum KEYS {
 enum INPUT_TURN { EDITOR, STATUS };
 enum EDITOR_HIGHLIGHT {
     HL_NORMAL = 0,
-    HL_NUMBER
+    HL_NUMBER,
+    HL_MATCH
 };
 typedef struct erow {
     int size;
@@ -99,6 +100,7 @@ void editor_update_syntax(erow *row) {
 int editor_syntax_to_color(int hl) {
     switch(hl) {
         case HL_NUMBER: return 31;
+        case HL_MATCH: return 34;
         default: return 37;
     }
 }
@@ -317,6 +319,13 @@ int editor_chrptr_to_cx (char *p) {
 }
 void editor_find_callback(char *pattern, int k) {
     char *p = NULL;
+    static int saved_hl_line;
+    static char *saved_hl = NULL;
+    if(saved_hl) {
+        memcpy(config.row[saved_hl_line].hl,saved_hl,config.row[saved_hl_line].size);
+        free(saved_hl);
+        saved_hl = NULL;
+    }
     if(k=='r' || k == '\x1b') {
         config.cx = config.saved_cx;
         config.cy = config.saved_cy;
@@ -335,6 +344,12 @@ void editor_find_callback(char *pattern, int k) {
             config.current_search_match = config.search_list_head;
             config.cy = config.current_search_match->cy;
             config.cx = editor_chrptr_to_cx( config.current_search_match->p);
+
+            saved_hl_line = config.current_search_match->cy;
+            saved_hl = malloc(row->size);
+            memcpy(saved_hl,row->hl,row->size);
+
+            memset(&row->hl[p - row->chars],HL_MATCH,strlen(pattern));
         }
     }
     if(!config.search_list_head) {
@@ -631,8 +646,8 @@ void editor_draw_rows(struct abuf *ab) {
                     }
                     ab_append(ab,&c[j],1);
                 }
-                ab_append(ab,"\x1b[39m",5);
             }
+            ab_append(ab,"\x1b[39m",5);
             // ab_append(ab, c, len);
         }
         ab_append(ab, "\x1b[K", 3); // escape sequence to clear the screen
