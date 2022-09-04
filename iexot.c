@@ -104,6 +104,8 @@ int editor_syntax_to_color(int hl) {
         default: return 37;
     }
 }
+void reset_highlight(Node *n) {
+}
 void editor_update_row(erow *row) {
     size_t tabs = 0;
     for (size_t i = 0; i < row->size; i++)
@@ -319,13 +321,13 @@ int editor_chrptr_to_cx (char *p) {
 }
 void editor_find_callback(char *pattern, int k) {
     char *p = NULL;
-    static int saved_hl_line;
-    static char *saved_hl = NULL;
-    if(saved_hl) {
-        memcpy(config.row[saved_hl_line].hl,saved_hl,config.row[saved_hl_line].size);
-        free(saved_hl);
-        saved_hl = NULL;
-    }
+    // static int saved_hl_line;
+    // static char *saved_hl = NULL;
+    // if(saved_hl) {
+    //     memcpy(config.row[saved_hl_line].hl,saved_hl,config.row[saved_hl_line].size);
+    //     free(saved_hl);
+    //     saved_hl = NULL;
+    // }
     if(k=='r' || k == '\x1b') {
         config.cx = config.saved_cx;
         config.cy = config.saved_cy;
@@ -335,8 +337,9 @@ void editor_find_callback(char *pattern, int k) {
     config.search_list_tail = NULL;
     for(size_t i=0;i<config.nrows;i++) {
         erow *row = &config.row[i];
+        editor_update_syntax(row);
         if((p = strstr(row->chars, pattern))) {
-            Node *match = create_node(i,p);
+            Node *match = create_node(i,p,row->hl);
             push_back(match, &config.search_list_head, &config.search_list_tail);
             config.current_search_match = realloc(config.current_search_match,sizeof(Node *));
             if(!config.current_search_match)
@@ -345,9 +348,9 @@ void editor_find_callback(char *pattern, int k) {
             config.cy = config.current_search_match->cy;
             config.cx = editor_chrptr_to_cx( config.current_search_match->p);
 
-            saved_hl_line = config.current_search_match->cy;
-            saved_hl = malloc(row->size);
-            memcpy(saved_hl,row->hl,row->size);
+            // saved_hl_line = config.current_search_match->cy;
+            // saved_hl = malloc(row->size);
+            // memcpy(saved_hl,row->hl,row->size);
 
             memset(&row->hl[p - row->chars],HL_MATCH,strlen(pattern));
         }
@@ -966,10 +969,12 @@ void editor_process_keypress() {
         char ch = editor_read_key();
         switch(ch) {
             case 'n':
-                config.current_search_match = config.current_search_match->next;
+                if(config.current_search_match->next)
+                    config.current_search_match = config.current_search_match->next;
                 break;
             case 'p':
-                config.current_search_match = config.current_search_match->prev;
+                if(config.current_search_match->prev)
+                    config.current_search_match = config.current_search_match->prev;
                 break;
         }
         if(config.current_search_match) {

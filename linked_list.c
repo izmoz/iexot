@@ -15,11 +15,12 @@ Node *get_tail(Node *head) {
     return p;
 }
 
-Node *create_node(int cy,char *p) {
+Node *create_node(int cy,char *p, unsigned char *hl) {
     Node *n = malloc(sizeof(Node));
     if(!n) return NULL;
     n->cy = cy;
     n->p = p;
+    n->hl = hl;
     n->next = n->prev = NULL;
     return n;
 }
