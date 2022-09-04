@@ -34,11 +34,16 @@ enum KEYS {
     DEL_KEY,
 };
 enum INPUT_TURN { EDITOR, STATUS };
+enum EDITOR_HIGHLIGHT {
+    HL_NORMAL = 0,
+    HL_NUMBER
+};
 typedef struct erow {
     int size;
     int rsize;
     char *chars;
     char *render;
+    unsigned char *hl;
 } erow;
 void erow_free(erow *row) {
     if (!row)
@@ -80,6 +85,23 @@ int editor_cx_to_rx(erow *row, int cx) {
     }
     return rx;
 }
+/*** syntax highlighting ***/
+void editor_update_syntax(erow *row) {
+    row->hl = realloc(row->hl,row->size);
+    memset(row->hl, HL_NORMAL, row->rsize);
+
+    for(int i=0;i<row->rsize;i++) {
+        if(isdigit(row->render[i])) {
+            row->hl[i] = HL_NUMBER;
+        }
+    }
+}
+int editor_syntax_to_color(int hl) {
+    switch(hl) {
+        case HL_NUMBER: return 31;
+        default: return 37;
+    }
+}
 void editor_update_row(erow *row) {
     size_t tabs = 0;
     for (size_t i = 0; i < row->size; i++)
@@ -106,6 +128,7 @@ void editor_update_row(erow *row) {
     }
     row->render[idx] = '\0';
     row->rsize = idx;
+    editor_update_syntax(row);
 }
 void editor_row_insert_char(erow *row, int at, int c) {
     if (at < 0 || at > row->size)
@@ -120,6 +143,7 @@ void editor_row_insert_char(erow *row, int at, int c) {
 void editor_free_row(erow *row) {
     free(row->render);
     free(row->chars);
+    free(row->hl);
 }
 void editor_del_row(int at) {
     if (at < 0 || at >= config.nrows)
@@ -160,6 +184,7 @@ void editor_append_line(int at, const char *s, size_t len) {
 
     config.row[at].rsize = 0;
     config.row[at].render = NULL;
+    config.row[at].hl = NULL;
     editor_update_row(&config.row[at]);
 
     config.nrows++;
@@ -586,7 +611,29 @@ void editor_draw_rows(struct abuf *ab) {
                 len = 0;
             if (len > config.scrncols)
                 len = config.scrncols;
-            ab_append(ab, &config.row[filerow].render[config.coloff], len);
+            char *c = &config.row[filerow].render[config.coloff];
+            unsigned char *hl = &config.row[filerow].hl[config.coloff];
+            int cur_color=-1;
+            for(size_t j=0;j<len;j++) {
+                if(hl[j] == HL_NORMAL) {
+                    if(cur_color != -1) {
+                        ab_append(ab,"\x1b[39m",5);
+                        cur_color = -1;
+                    }
+                    ab_append(ab,&c[j],1);
+                } else {
+                    int color = editor_syntax_to_color(hl[j]);
+                    if(cur_color != color) {
+                        cur_color = color;
+                        char buf[16];
+                        int clen = snprintf(buf,sizeof(buf),"\x1b[%dm",color);
+                        ab_append(ab,buf,clen);
+                    }
+                    ab_append(ab,&c[j],1);
+                }
+                ab_append(ab,"\x1b[39m",5);
+            }
+            // ab_append(ab, c, len);
         }
         ab_append(ab, "\x1b[K", 3); // escape sequence to clear the screen
         if (y < config.scrnrows)
