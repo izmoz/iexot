@@ -8,7 +8,7 @@ void editor_process_keypress();
 void editor_destroy();
 void editor_set_status_msg(const char *fmt, ...);
 void editor_move_cursor(int k);
-char *editor_prompt(char *prompt);
+char *editor_prompt(char *prompt, void (*)(char *, int));
  
 void editor_clear_scrn();
  

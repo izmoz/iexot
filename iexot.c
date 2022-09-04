@@ -49,6 +49,7 @@ void erow_free(erow *row) {
 /*** editor ***/
 struct editor_config {
     int cx, cy, rx;
+    int saved_cx,saved_cy;
     int flag_mv_line;
     int prevx;
     char *filename;
@@ -284,44 +285,52 @@ void editor_jmp_line_boundaries (int arg) {
             config.cx = config.row[config.cy].size - 1;
     }
 }
-// maybe not necessary
 int editor_chrptr_to_cx (char *p) {
     int i;
     for(i=0;i<config.row[config.cy].size && p != (config.row[config.cy].chars+i);i++);
     return i;
 }
-void editor_find() {
+void editor_find_callback(char *pattern, int k) {
     char *p = NULL;
-    char *pattern = editor_prompt("Search: %s");
-    if(NULL == pattern)
+    if(k=='r' || k == '\x1b') {
+        config.cx = config.saved_cx;
+        config.cy = config.saved_cy;
         return;
-    list_free(config.search_list_head, config.search_list_tail);
+    }
     config.search_list_head = NULL;
     config.search_list_tail = NULL;
-    // free(config.current_search_match);
     for(size_t i=0;i<config.nrows;i++) {
         erow *row = &config.row[i];
         if((p = strstr(row->chars, pattern))) {
             Node *match = create_node(i,p);
             push_back(match, &config.search_list_head, &config.search_list_tail);
-            // config.cy = i;
-            // config.cx += p - row->chars;
-        }
-    }
-    if(!config.search_list_head)
-        editor_set_status_msg("Pattern \"%s\" not found", pattern);
-    else {
-        config.current_search_match = malloc(sizeof(Node *));
-        if(config.current_search_match) {
+            config.current_search_match = realloc(config.current_search_match,sizeof(Node *));
+            if(!config.current_search_match)
+                die("config.current_search_match realloc returns NULL");
             config.current_search_match = config.search_list_head;
-
             config.cy = config.current_search_match->cy;
             config.cx = editor_chrptr_to_cx( config.current_search_match->p);
-            config.current_search_match = config.current_search_match->next;
         }
     }
+    if(!config.search_list_head) {
+        config.cx = config.saved_cx;
+        config.cy = config.saved_cy;
+    }
+    // else
+    //     if(config.current_search_match)
+    //         config.current_search_match = config.current_search_match->next;
 }
-char *editor_prompt(char *prompt) {
+void editor_find() {
+    config.saved_cx = config.cx;
+    config.saved_cy = config.cy;
+    list_free(config.search_list_head, config.search_list_tail);
+    config.search_list_head = NULL;
+    config.search_list_tail = NULL;
+    char *pattern = editor_prompt("Search: %s", editor_find_callback);
+    if(NULL == pattern)
+        return;
+}
+char *editor_prompt(char *prompt, void (*callback)(char *p, int k)) {
     size_t bufsize = 128;
     char *buf = malloc(bufsize);
 
@@ -336,11 +345,13 @@ char *editor_prompt(char *prompt) {
                 buf[--buflen] = '\0';
         } else if (c == '\x1b') {
             editor_set_status_msg("");
+            if(callback) callback(buf, c);
             free(buf);
             return NULL;
         } else if (c == '\r') {
             if (buflen != 0) {
                 editor_set_status_msg("");
+                if(callback) callback(buf, c);
                 return buf;
             }
         } else if (!iscntrl(c) && c < 128) {
@@ -351,6 +362,7 @@ char *editor_prompt(char *prompt) {
             buf[buflen++] = c;
             buf[buflen] = '\0';
         }
+        if(callback) callback(buf, c);
     }
 }
 void editor_del_char() {
@@ -409,7 +421,7 @@ void editor_open(const char *filename) {
 }
 void editor_save() {
     if (config.filename == NULL) {
-        config.filename = editor_prompt("Save as: %s (ESC to cancel)");
+        config.filename = editor_prompt("Save as: %s (ESC to cancel)", NULL);
         if (!config.filename) {
             editor_set_status_msg("Save aborted.");
             return;
@@ -494,6 +506,7 @@ void editor_init() {
     config.row = NULL;
     config.filename = NULL;
     config.cx = config.cy = config.rx;
+    config.saved_cx = config.saved_cy = 0;
     config.prevx = 0;
     config.flag_mv_line = 0;
     if (get_win_size(&config.scrnrows, &config.scrncols) == -1)
@@ -512,7 +525,6 @@ void editor_destroy() {
     write(STDIN_FILENO, "\x1b[2J", 4);
     write(STDIN_FILENO, "\x1b[H", 3);
     erow_free(config.row);
-    // list_free(config.search_list_head, config.search_list_tail);
     free(config.current_search_match);
     exit(0);
 }
@@ -808,7 +820,7 @@ void editor_process_keypress() {
             char msg_buf[100];
             sprintf(msg_buf, "You have %d unsaved changes. Do you really want to quit? (y/n) ",config.nmodifications);
             strcat(msg_buf,"%s");
-            char *ans = editor_prompt(msg_buf);
+            char *ans = editor_prompt(msg_buf,NULL);
             if(0 == strcmp(ans,"y"))
                 editor_destroy();
         } else
@@ -882,15 +894,26 @@ void editor_process_keypress() {
         }
         break;
     }
+    case CTRL_KEY('t'):
+        editor_find();
+        break;
     case CTRL_KEY('f'):
         editor_find();
         break;
     case CTRL_KEY('n'):
+        char ch = editor_read_key();
+        switch(ch) {
+            case 'n':
+                config.current_search_match = config.current_search_match->next;
+                break;
+            case 'p':
+                config.current_search_match = config.current_search_match->prev;
+                break;
+        }
         if(config.current_search_match) {
             config.cy = config.current_search_match->cy;
             config.cx = editor_chrptr_to_cx( config.current_search_match->p);
-            config.current_search_match = config.current_search_match->next;
-        }
+        } else return;
         break;
     default:
         editor_insert_char(c);
