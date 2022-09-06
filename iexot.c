@@ -1,4 +1,3 @@
-//FIXME: program explosing when insert more than 1 tab 
 /*** includes ***/
 #include "iexot.h"
 #include "linked_list.h"
@@ -25,7 +24,6 @@
  
 #define HL_HIGHLIGHT_NUMBERS (1 << 0)
 #define HL_HIGHLIGHT_STRINGS (1 << 1)
-#define HL_HIGHLIGHT_COMMENTS (1 << 2)
  
 /*** enums ***/
 enum KEYS {
@@ -111,7 +109,7 @@ int is_separator(int c) {
 void editor_update_syntax(erow *row) {
     if (row->size < 1)
         return;
-    row->hl = realloc(row->hl, row->size);
+    row->hl = realloc(row->hl, row->rsize);
     if (!row->hl)
         die("editor_update_syntax: hl realloc");
     memset(row->hl, HL_NORMAL, row->rsize);
@@ -120,13 +118,13 @@ void editor_update_syntax(erow *row) {
     int i = 0;
     int prev_sep = 1;
     bool in_string = false;
-    while (i < row->size) {
+    while (i < row->rsize) {
         char c = row->render[i];
         unsigned char prev_hl = (i > 0) ? row->hl[i - 1] : HL_NORMAL;
         if(!in_string) {
             char next_chr = row->render[i+1]; // check for out of boundaries
             if(c == '/' && next_chr == '/') {
-                memset(&row->hl[i],HL_COMMENT,row->size - i);
+                memset(&row->hl[i],HL_COMMENT,row->rsize - i);
                 return;
             }
         }
@@ -218,6 +216,8 @@ void editor_row_insert_char(erow *row, int at, int c) {
     if (at < 0 || at > row->size)
         at = row->size;
     row->chars = realloc(row->chars, row->size + 2);
+    if(!row->chars)
+        die("editor_row_insert_char: row->char realloc");
     memmove(&row->chars[at + 1], &row->chars[at], row->size - at + 1);
     row->size++;
     row->chars[at] = c;
@@ -240,6 +240,8 @@ void editor_del_row(int at) {
 }
 void editor_row_append_string(erow *row, const char *s, size_t len) {
     row->chars = realloc(row->chars, row->size + len + 1);
+    if(!row->chars)
+        die("editor_row_append_string: row->char realloc");
     memcpy(&row->chars[row->size], s, len);
     row->size += len;
     row->chars[row->size] = '\0';
@@ -258,6 +260,8 @@ void editor_append_line(int at, const char *s, size_t len) {
     if (at < 0 || at > config.nrows)
         return;
     config.row = realloc(config.row, sizeof(erow) * (config.nrows + 1));
+    if(!config.row)
+        die("editor_append_line: config.row realloc");
     memmove(&config.row[at + 1], &config.row[at],
             sizeof(erow) * (config.nrows - at));
  
