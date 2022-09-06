@@ -1,3 +1,4 @@
+//FIXME: program explosing when insert more than 1 tab 
 /*** includes ***/
 #include "iexot.h"
 #include "linked_list.h"
@@ -9,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 #include <sys/ioctl.h>
 #include <termios.h>
 #include <time.h>
@@ -18,12 +20,13 @@
 #define SHIFT_KEY(k) ((k)&0x5f)
 #define IEXOT_VERSION "0.0.1"
 #define IEXOT_TITLE_TOP_PADDING 3
-
+ 
 #define IEXOT_TAB_WIDTH 4
-
+ 
 #define HL_HIGHLIGHT_NUMBERS (1 << 0)
 #define HL_HIGHLIGHT_STRINGS (1 << 1)
-
+#define HL_HIGHLIGHT_COMMENTS (1 << 2)
+ 
 /*** enums ***/
 enum KEYS {
     BACKSPACE = 127,
@@ -37,8 +40,8 @@ enum KEYS {
     END_KEY,
     DEL_KEY,
 };
-enum EDITOR_HIGHLIGHT { HL_NORMAL = 0, HL_NUMBER, HL_MATCH, HL_STRING };
-
+enum EDITOR_HIGHLIGHT { HL_NORMAL = 0, HL_NUMBER, HL_MATCH, HL_STRING, HL_COMMENT };
+ 
 struct editor_syntax {
     char *filetype;
     char **filematch;
@@ -58,14 +61,14 @@ void erow_free(erow *row) {
     free(row);
 }
 /*** filetypes ***/
-
+ 
 char *C_HL_extensions[] = {".c", ".h", ".cpp", NULL};
-
+ 
 struct editor_syntax HLDB[] = {
     {"c", C_HL_extensions, HL_HIGHLIGHT_NUMBERS | HL_HIGHLIGHT_STRINGS},
 };
 #define HLDB_ENTRIES (sizeof(HLDB) / sizeof(HLDB[0]))
-
+ 
 /*** editor ***/
 struct editor_config {
     int cx, cy, rx;
@@ -85,7 +88,7 @@ struct editor_config {
     erow *row;
     struct termios orig_termios;
     struct editor_syntax *syntax;
-
+ 
     Node *current_search_match;
     Node *search_list_head;
     Node *search_list_tail;
@@ -114,24 +117,28 @@ void editor_update_syntax(erow *row) {
     memset(row->hl, HL_NORMAL, row->rsize);
     if(!config.syntax)
         return;
-
     int i = 0;
     int prev_sep = 1;
-    int quotes_flag = 0;
+    bool in_string = false;
     while (i < row->size) {
         char c = row->render[i];
         unsigned char prev_hl = (i > 0) ? row->hl[i - 1] : HL_NORMAL;
-        if((config.syntax->flags & HL_HIGHLIGHT_STRINGS) && (row->hl[i] != HL_MATCH)) {
-            if(quotes_flag)
-                row->hl[i] = HL_STRING;
-            if((c=='\"' || c== '\'') && quotes_flag)
-                quotes_flag = 0;
-            else if((c=='\"' || c== '\'') && !quotes_flag) {
-                quotes_flag = 1;
-                row->hl[i] = HL_STRING;
+        if(!in_string) {
+            char next_chr = row->render[i+1]; // check for out of boundaries
+            if(c == '/' && next_chr == '/') {
+                memset(&row->hl[i],HL_COMMENT,row->size - i);
+                return;
             }
         }
-        if (config.syntax->flags & HL_HIGHLIGHT_NUMBERS && !quotes_flag) {
+        if((config.syntax->flags & HL_HIGHLIGHT_STRINGS) && (row->hl[i] != HL_MATCH)) {
+            if(c == '\"' || c == '\'') {
+                row->hl[i] = HL_STRING;
+                in_string = !in_string;
+            }
+            if(in_string)
+                row->hl[i] = HL_STRING;
+        }
+        if (config.syntax->flags & HL_HIGHLIGHT_NUMBERS && !in_string) {
             if ((isdigit(c) && (prev_hl == HL_NUMBER || prev_sep)) ||
                 (c == '.' && prev_hl == HL_NUMBER)) {
                 row->hl[i] = HL_NUMBER;
@@ -173,6 +180,8 @@ int editor_syntax_to_color(int hl) {
         return 34;
     case HL_STRING:
         return 32;
+    case HL_COMMENT:
+        return 36;
     default:
         return 37;
     }
@@ -251,17 +260,17 @@ void editor_append_line(int at, const char *s, size_t len) {
     config.row = realloc(config.row, sizeof(erow) * (config.nrows + 1));
     memmove(&config.row[at + 1], &config.row[at],
             sizeof(erow) * (config.nrows - at));
-
+ 
     config.row[at].size = len;
     config.row[at].chars = malloc(len + 1);
     memcpy(config.row[at].chars, s, len);
     config.row[at].chars[len] = '\0';
-
+ 
     config.row[at].rsize = 0;
     config.row[at].render = NULL;
     config.row[at].hl = NULL;
     editor_update_row(&config.row[at]);
-
+ 
     config.nrows++;
     config.nmodifications++;
 }
@@ -397,6 +406,9 @@ int editor_chrptr_to_cx(char *p) {
         ;
     return i;
 }
+//FIXME: many matches on the same line
+//FIXME: something strange with 'r' symbol (try to search 'editor' or 'term')
+ 
 void editor_find_callback(char *pattern, int k) {
     char *p = NULL;
     if (k == 'r' || k == '\x1b') {
@@ -420,7 +432,7 @@ void editor_find_callback(char *pattern, int k) {
             config.current_search_match = config.search_list_head;
             config.cy = config.current_search_match->cy;
             config.cx = editor_chrptr_to_cx(config.current_search_match->p);
-
+ 
             memset(&row->hl[p - row->chars], HL_MATCH, strlen(pattern));
         }
     }
@@ -442,7 +454,7 @@ void editor_find() {
 char *editor_prompt(char *prompt, void (*callback)(char *p, int k)) {
     size_t bufsize = 128;
     char *buf = malloc(bufsize);
-
+ 
     size_t buflen = 0;
     buf[0] = '\0';
     while (1) {
@@ -521,7 +533,7 @@ void editor_open(const char *filename) {
         die("fopen");
     size_t linecap = 0;
     ssize_t linelen;
-
+ 
     while ((linelen = getline(&line, &linecap, fp)) != -1) {
         while (linelen > 0 &&
                (line[linelen - 1] == '\r' || line[linelen - 1] == '\n'))
@@ -600,7 +612,7 @@ int get_cursor_position(unsigned *rows, unsigned *cols) {
         return -1;
     return 0;
 }
-
+ 
 int get_win_size(unsigned *rows, unsigned *cols) {
     struct winsize ws;
     if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0) {
@@ -656,7 +668,7 @@ void enable_raw_mode() {
     if (tcgetattr(STDIN_FILENO, &config.orig_termios) == -1)
         die("tcgetattr");
     atexit(disable_raw_mode);
-
+ 
     struct termios raw = config.orig_termios;
     raw.c_oflag &= ~(OPOST);
     raw.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
@@ -664,11 +676,11 @@ void enable_raw_mode() {
     raw.c_lflag |= (CS8);
     raw.c_cc[VMIN] = 0;
     raw.c_cc[VTIME] = 10;
-
+ 
     if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == -1)
         die("tcsetattr");
 }
-
+ 
 /*** output ***/
 void editor_draw_rows(struct abuf *ab) {
     size_t y;
@@ -776,12 +788,12 @@ void editor_scroll() {
     config.rx = 0;
     if (config.cy < config.nrows)
         config.rx = editor_cx_to_rx(&config.row[config.cy], config.cx);
-
+ 
     if (config.cy < config.rowoff)
         config.rowoff = config.cy;
     if (config.cy >= config.rowoff + config.scrnrows)
         config.rowoff = config.cy - config.scrnrows + 1;
-
+ 
     if (config.rx < config.coloff)
         config.coloff = config.rx;
     if (config.rx >= config.coloff + config.scrncols)
@@ -792,21 +804,21 @@ void editor_clear_scrn() {
     struct abuf ab = ABUF_INIT;
     ab_append(&ab, "\x1b[?25l", 6); // hide the cursor when repainting
     ab_append(&ab, "\x1b[H", 3);    // escape sequence to move the cursor
-
+ 
     editor_draw_rows(&ab);
     editor_draw_statusbar(&ab);
     editor_draw_messagebar(&ab);
     char buf[100];
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH", config.cy - config.rowoff + 1,
              config.rx - config.coloff + 1); // updating cursor position
-
+ 
     ab_append(&ab, buf, strlen(buf));
     ab_append(&ab, "\x1b[?25h", 6);
-
+ 
     write(STDOUT_FILENO, ab.b, ab.len);
     ab_free(&ab);
 }
-
+ 
 /*** input ***/
 int editor_read_key() {
     int nread;
@@ -973,7 +985,7 @@ void editor_process_keypress() {
     case ARROW_DOWN:
         editor_move_cursor(c);
         break;
-
+ 
     case PAGE_UP:
     case PAGE_DOWN: {
         if (c == PAGE_UP) {
@@ -989,7 +1001,6 @@ void editor_process_keypress() {
         }
         break;
     }
-
     case HOME_KEY:
         config.cx = 0;
         break;
