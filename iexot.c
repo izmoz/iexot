@@ -21,7 +21,8 @@
 
 #define IEXOT_TAB_WIDTH 4
 
-#define HL_HIGHLIGHT_NUMBERS (1 >> 0)
+#define HL_HIGHLIGHT_NUMBERS (1 << 0)
+#define HL_HIGHLIGHT_STRINGS (1 << 1)
 
 /*** enums ***/
 enum KEYS {
@@ -36,7 +37,7 @@ enum KEYS {
     END_KEY,
     DEL_KEY,
 };
-enum EDITOR_HIGHLIGHT { HL_NORMAL = 0, HL_NUMBER, HL_MATCH, HL_STRINGS };
+enum EDITOR_HIGHLIGHT { HL_NORMAL = 0, HL_NUMBER, HL_MATCH, HL_STRING };
 
 struct editor_syntax {
     char *filetype;
@@ -61,7 +62,7 @@ void erow_free(erow *row) {
 char *C_HL_extensions[] = {".c", ".h", ".cpp", NULL};
 
 struct editor_syntax HLDB[] = {
-    {"c", C_HL_extensions, HL_HIGHLIGHT_NUMBERS},
+    {"c", C_HL_extensions, HL_HIGHLIGHT_NUMBERS | HL_HIGHLIGHT_STRINGS},
 };
 #define HLDB_ENTRIES (sizeof(HLDB) / sizeof(HLDB[0]))
 
@@ -116,10 +117,21 @@ void editor_update_syntax(erow *row) {
 
     int i = 0;
     int prev_sep = 1;
+    int quotes_flag = 0;
     while (i < row->size) {
         char c = row->render[i];
         unsigned char prev_hl = (i > 0) ? row->hl[i - 1] : HL_NORMAL;
-        if (config.syntax->flags & HL_HIGHLIGHT_NUMBERS) {
+        if((config.syntax->flags & HL_HIGHLIGHT_STRINGS) && (row->hl[i] != HL_MATCH)) {
+            if(quotes_flag)
+                row->hl[i] = HL_STRING;
+            if((c=='\"' || c== '\'') && quotes_flag)
+                quotes_flag = 0;
+            else if((c=='\"' || c== '\'') && !quotes_flag) {
+                quotes_flag = 1;
+                row->hl[i] = HL_STRING;
+            }
+        }
+        if (config.syntax->flags & HL_HIGHLIGHT_NUMBERS && !quotes_flag) {
             if ((isdigit(c) && (prev_hl == HL_NUMBER || prev_sep)) ||
                 (c == '.' && prev_hl == HL_NUMBER)) {
                 row->hl[i] = HL_NUMBER;
@@ -159,6 +171,8 @@ int editor_syntax_to_color(int hl) {
         return 31;
     case HL_MATCH:
         return 34;
+    case HL_STRING:
+        return 32;
     default:
         return 37;
     }
